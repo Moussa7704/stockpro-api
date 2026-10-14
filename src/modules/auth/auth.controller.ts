@@ -2,7 +2,6 @@ import type { CookieOptions, Request, Response } from "express";
 import { env } from "../../config/env.js";
 import { AppError } from "../../utils/app-error.js";
 import * as authService from "./auth.service.js";
-import * as twoFactorService from "./two-factor.service.js";
 
 const REFRESH_COOKIE = "refreshToken";
 
@@ -35,23 +34,20 @@ export async function register(req: Request, res: Response): Promise<void> {
 }
 
 export async function login(req: Request, res: Response): Promise<void> {
+  // Mot de passe correct : un code est envoyé par email, la session n'existe pas encore
   const result = await authService.login(req.body);
-
-  // 2FA activée : le client doit appeler POST /login/2fa avec ce challenge et le code
-  if (result.twoFactorRequired) {
-    res.json({ twoFactorRequired: true, challengeToken: result.challengeToken });
-    return;
-  }
-
-  setRefreshCookie(res, result.refreshToken);
-  res.json({ twoFactorRequired: false, user: result.user, accessToken: result.accessToken });
+  res.json({ otpRequired: true, ...result });
 }
 
-export async function loginWithTwoFactor(req: Request, res: Response): Promise<void> {
-  const { user, accessToken, refreshToken, backupCodesRemaining } =
-    await authService.loginWithTwoFactor(req.body);
+export async function loginWithOtp(req: Request, res: Response): Promise<void> {
+  const { user, accessToken, refreshToken } = await authService.loginWithOtp(req.body);
   setRefreshCookie(res, refreshToken);
-  res.json({ user, accessToken, backupCodesRemaining });
+  res.json({ user, accessToken });
+}
+
+export async function resendOtp(req: Request, res: Response): Promise<void> {
+  const result = await authService.resendOtp(req.body.challengeToken);
+  res.json({ resent: true, ...result });
 }
 
 export async function refresh(req: Request, res: Response): Promise<void> {
@@ -79,6 +75,5 @@ export async function logout(req: Request, res: Response): Promise<void> {
 export async function me(req: Request, res: Response): Promise<void> {
   // req.user est garanti par le middleware authenticate placé avant
   const user = await authService.getMe(req.user!.sub);
-  const twoFactorEnabled = await twoFactorService.isEnabled(user.id);
-  res.json({ user, twoFactorEnabled });
+  res.json({ user });
 }

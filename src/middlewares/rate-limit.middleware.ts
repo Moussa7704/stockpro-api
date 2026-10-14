@@ -79,12 +79,19 @@ export const loginEmailLimiter = createLimiter({
   },
 });
 
-/** Échecs de code 2FA au login, par IP (en plus des 5 essais max par challenge). */
-export const twoFactorLoginLimiter = createLimiter({
+/** Échecs de code OTP au login, par IP (en plus des 5 essais max par code, stockés en base). */
+export const otpVerifyLimiter = createLimiter({
   windowMs: 15 * MINUTE,
   limit: 10,
   skipSuccessfulRequests: true,
   message: "Trop de codes invalides, réessayez dans 15 minutes",
+});
+
+/** Demandes de renvoi du code par email, par IP (limite aussi le spam d'emails). */
+export const otpResendLimiter = createLimiter({
+  windowMs: 15 * MINUTE,
+  limit: 10,
+  message: "Trop de demandes de renvoi, réessayez plus tard",
 });
 
 /** Renouvellement de session, par IP. */
@@ -92,16 +99,4 @@ export const refreshLimiter = createLimiter({
   windowMs: 15 * MINUTE,
   limit: 30,
   message: "Trop de renouvellements de session, réessayez plus tard",
-});
-
-/**
- * Actions 2FA d'un utilisateur connecté (activer, désactiver, régénérer) : par utilisateur.
- * À placer APRÈS authenticate, qui remplit req.user.
- */
-export const twoFactorManageLimiter = createLimiter({
-  windowMs: 15 * MINUTE,
-  limit: 5,
-  skipSuccessfulRequests: true,
-  message: "Trop de tentatives, réessayez dans 15 minutes",
-  keyGenerator: (req) => (req.user ? `user:${req.user.sub}` : ipKey(req)),
 });

@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 import { USER_ROLES, type UserRole } from "../models/user.model.js";
@@ -8,18 +8,18 @@ export interface AccessTokenPayload {
   role: UserRole;
 }
 
-export interface TwoFactorChallenge {
-  sub: string;
-  jti: string; // identifiant unique du challenge (pour limiter les essais)
-  exp: number; // expiration, en secondes depuis 1970
+export interface LoginChallenge {
+  sub: string; // id de l'utilisateur
+  jti: string; // id du challenge = ligne email_otp_codes correspondante
 }
 
-const CHALLENGE_EXPIRES_IN = 5 * 60; // 5 minutes pour saisir le code
+// 15 min : laisse le temps de recevoir l'email et de redemander un code si besoin
+const CHALLENGE_EXPIRES_IN = 15 * 60;
 
 // Clé dérivée, différente de celle des access tokens : un challenge ne peut jamais
-// être accepté comme access token (sinon on contournerait la 2FA)
+// être accepté comme access token (sinon on contournerait l'OTP)
 const challengeSecret = createHmac("sha256", env.JWT_ACCESS_SECRET)
-  .update("2fa-challenge")
+  .update("login-otp-challenge")
   .digest();
 
 function isUserRole(value: unknown): value is UserRole {
@@ -45,26 +45,21 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
   return { sub: payload.sub, role: payload.role };
 }
 
-/** Jeton intermédiaire du login 2FA : prouve que le mot de passe a été validé, rien de plus. */
-export function signTwoFactorChallenge(userId: string): string {
+/** Jeton intermédiaire du login : prouve que le mot de passe a été validé, rien de plus. */
+export function signLoginChallenge(userId: string, challengeId: string): string {
   return jwt.sign({ sub: userId }, challengeSecret, {
     algorithm: "HS256",
     expiresIn: CHALLENGE_EXPIRES_IN,
-    jwtid: randomUUID(),
+    jwtid: challengeId,
   });
 }
 
-export function verifyTwoFactorChallenge(token: string): TwoFactorChallenge {
+export function verifyLoginChallenge(token: string): LoginChallenge {
   const payload = jwt.verify(token, challengeSecret, { algorithms: ["HS256"] });
 
-  if (
-    typeof payload === "string" ||
-    typeof payload.sub !== "string" ||
-    typeof payload.jti !== "string" ||
-    typeof payload.exp !== "number"
-  ) {
+  if (typeof payload === "string" || typeof payload.sub !== "string" || typeof payload.jti !== "string") {
     throw new jwt.JsonWebTokenError("Challenge invalide");
   }
 
-  return { sub: payload.sub, jti: payload.jti, exp: payload.exp };
+  return { sub: payload.sub, jti: payload.jti };
 }

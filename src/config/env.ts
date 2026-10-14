@@ -27,10 +27,21 @@ const envSchema = z.object({
   // Durée de vie d'une session (refresh token), en jours
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(7),
 
-  // Clé AES-256 (32 octets en hexadécimal) qui chiffre les secrets TOTP en base
-  TWO_FACTOR_ENCRYPTION_KEY: z
+  // Clé secrète (32 octets en hexadécimal) pour l'empreinte HMAC des codes OTP stockés en base
+  OTP_SECRET_KEY: z
     .string()
     .regex(/^[0-9a-f]{64}$/i, "doit contenir 64 caractères hexadécimaux (32 octets)"),
+
+  // Envoi des emails (codes OTP). Gmail : smtp.gmail.com, port 465, SMTP_SECURE=true,
+  // et un "mot de passe d'application" Google (pas le mot de passe du compte)
+  SMTP_HOST: z.string().min(1),
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  // true = TLS dès la connexion (port 465) ; false = STARTTLS (port 587)
+  SMTP_SECURE: z.stringbool().default(true),
+  SMTP_USER: z.string().min(1),
+  SMTP_PASSWORD: z.string().min(1),
+  // Expéditeur affiché, ex. "StockPro <moncompte@gmail.com>"
+  MAIL_FROM: z.string().min(1),
 });
 
 const parsed = envSchema.safeParse(process.env);
