@@ -18,3 +18,11 @@ export async function connectDatabase(): Promise<void> {
   await sequelize.authenticate();
   console.log("Connexion à PostgreSQL établie");
 }
+
+export async function syncDatabase(): Promise<void> {
+  // Crée les tables manquantes, sans toucher aux tables existantes.
+  // Suffisant pour démarrer ; on passera aux migrations quand le schéma devra évoluer.
+  await sequelize.sync();
+  console.log("Tables synchronisées");
+}
+
