@@ -16,6 +16,11 @@ const envSchema = z.object({
   DB_NAME: z.string().min(1),
   DB_USER: z.string().min(1),
   DB_PASSWORD: z.string().min(1),
+    // Au moins 32 caractères : un secret court peut être retrouvé par force brute
+  JWT_ACCESS_SECRET: z.string().min(32),
+  // Durée de vie de l'access token, en secondes (900 = 15 min)
+  JWT_ACCESS_EXPIRES_IN: z.coerce.number().int().positive().default(900),
+
 });
 
 const parsed = envSchema.safeParse(process.env);

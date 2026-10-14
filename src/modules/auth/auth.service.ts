@@ -1,7 +1,10 @@
 import { UniqueConstraintError } from "sequelize";
 import { User } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
-import type { RegisterInput } from "./auth.schemas.js";
+import type { LoginInput, RegisterInput } from "./auth.schemas.js";
+
+import { signAccessToken } from "../../utils/jwt.js";
+
 
 export async function register(input: RegisterInput): Promise<User> {
   try {
@@ -14,4 +17,16 @@ export async function register(input: RegisterInput): Promise<User> {
     }
     throw error;
   }
+}
+
+export async function login(input: LoginInput): Promise<{ user: User; accessToken: string }> {
+  const user = await User.findOne({ where: { email: input.email } });
+
+  // Même message si l'email est inconnu ou si le mot de passe est faux
+  if (!user || !(await user.comparePassword(input.password))) {
+    throw AppError.unauthorized("Email ou mot de passe incorrect");
+  }
+
+  const accessToken = signAccessToken({ sub: user.id, role: user.role });
+  return { user, accessToken };
 }

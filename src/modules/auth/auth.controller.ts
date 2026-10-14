@@ -6,3 +6,8 @@ export async function register(req: Request, res: Response): Promise<void> {
   const user = await authService.register(req.body);
   res.status(201).json({ user });
 }
+
+export async function login(req: Request, res: Response): Promise<void> {
+  const { user, accessToken } = await authService.login(req.body);
+  res.json({ user, accessToken });
+}
