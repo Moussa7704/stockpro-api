@@ -10,6 +10,9 @@ try {
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   PORT: z.coerce.number().int().positive().default(3000),
+  // Nombre de reverse proxies devant l'API (nginx, load balancer…). 0 = accès direct.
+  // Sert à lire la vraie IP du client dans X-Forwarded-For (indispensable au rate limiting)
+  TRUST_PROXY: z.coerce.number().int().min(0).default(0),
 
   DB_HOST: z.string().min(1),
   DB_PORT: z.coerce.number().int().positive().default(5432),

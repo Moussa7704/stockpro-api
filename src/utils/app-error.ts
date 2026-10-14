@@ -31,4 +31,8 @@ export class AppError extends Error {
   static conflict(message = "Conflit") {
     return new AppError(409, message);
   }
+
+  static tooManyRequests(message = "Trop de requêtes, réessayez plus tard") {
+    return new AppError(429, message);
+  }
 }
