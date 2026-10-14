@@ -35,4 +35,8 @@ export class AppError extends Error {
   static tooManyRequests(message = "Trop de requêtes, réessayez plus tard") {
     return new AppError(429, message);
   }
+
+  static serviceUnavailable(message = "Service momentanément indisponible") {
+    return new AppError(503, message);
+  }
 }
