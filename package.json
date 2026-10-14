@@ -1,14 +1,14 @@
 {
-  "name": "server",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "stockpro-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "oxlint"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
@@ -17,13 +17,12 @@
     }
   },
   "packageManager": "pnpm@12.11.2",
-  "type": "module",
   "dependencies": {
     "express": "^5.3.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
-    "@types/node": "^26.6.5",
+    "@types/node": "^22.20.5",
     "oxlint": "^1.87.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
