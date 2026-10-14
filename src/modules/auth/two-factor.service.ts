@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import { Op } from "sequelize";
 import { User, UserTwoFactor } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
 import { decrypt, encrypt } from "../../utils/crypto.js";
@@ -59,4 +60,36 @@ export async function enable(userId: string, code: string): Promise<void> {
 
   // Ce code est consommé : il ne pourra pas resservir au login (anti-rejeu)
   await twoFactor.update({ enabledAt: new Date(), lastUsedStep: step });
+}
+
+export async function isEnabled(userId: string): Promise<boolean> {
+  const twoFactor = await UserTwoFactor.findByPk(userId);
+  return Boolean(twoFactor?.enabledAt);
+}
+
+/** Vérifie un code TOTP au login. Un code déjà utilisé est refusé (anti-rejeu). */
+export async function verifyLoginCode(userId: string, code: string): Promise<boolean> {
+  const twoFactor = await UserTwoFactor.findByPk(userId);
+  if (!twoFactor?.enabledAt) {
+    return false;
+  }
+
+  const step = verifyTotp(decrypt(twoFactor.secretEncrypted), code);
+  if (step === null) {
+    return false;
+  }
+
+  // On n'accepte qu'une fenêtre plus récente que la dernière utilisée.
+  // La condition dans le WHERE rend la vérification atomique : deux requêtes
+  // simultanées avec le même code ne peuvent pas passer toutes les deux.
+  const [updatedCount] = await UserTwoFactor.update(
+    { lastUsedStep: step },
+    {
+      where: {
+        userId,
+        [Op.or]: [{ lastUsedStep: null }, { lastUsedStep: { [Op.lt]: step } }],
+      },
+    },
+  );
+  return updatedCount === 1;
 }

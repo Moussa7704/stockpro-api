@@ -31,5 +31,11 @@ export const twoFactorCodeSchema = z.object({
   code: totpCode,
 });
 
+export const loginTwoFactorSchema = z.object({
+  challengeToken: z.string().min(1),
+  code: totpCode,
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type LoginTwoFactorInput = z.infer<typeof loginTwoFactorSchema>;

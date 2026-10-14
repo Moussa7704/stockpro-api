@@ -34,7 +34,20 @@ export async function register(req: Request, res: Response): Promise<void> {
 }
 
 export async function login(req: Request, res: Response): Promise<void> {
-  const { user, accessToken, refreshToken } = await authService.login(req.body);
+  const result = await authService.login(req.body);
+
+  // 2FA activée : le client doit appeler POST /login/2fa avec ce challenge et le code
+  if (result.twoFactorRequired) {
+    res.json({ twoFactorRequired: true, challengeToken: result.challengeToken });
+    return;
+  }
+
+  setRefreshCookie(res, result.refreshToken);
+  res.json({ twoFactorRequired: false, user: result.user, accessToken: result.accessToken });
+}
+
+export async function loginWithTwoFactor(req: Request, res: Response): Promise<void> {
+  const { user, accessToken, refreshToken } = await authService.loginWithTwoFactor(req.body);
   setRefreshCookie(res, refreshToken);
   res.json({ user, accessToken });
 }

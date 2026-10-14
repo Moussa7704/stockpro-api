@@ -3,8 +3,19 @@ import { UniqueConstraintError } from "sequelize";
 import { env } from "../../config/env.js";
 import { RefreshToken, User } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
-import { signAccessToken } from "../../utils/jwt.js";
-import type { LoginInput, RegisterInput } from "./auth.schemas.js";
+import {
+  signAccessToken,
+  signTwoFactorChallenge,
+  verifyTwoFactorChallenge,
+  type TwoFactorChallenge,
+} from "../../utils/jwt.js";
+import type { LoginInput, LoginTwoFactorInput, RegisterInput } from "./auth.schemas.js";
+import {
+  assertChallengeUsable,
+  markChallengeUsed,
+  recordFailedAttempt,
+} from "./challenge-attempts.js";
+import * as twoFactorService from "./two-factor.service.js";
 
 export interface AuthTokens {
   accessToken: string;
@@ -50,12 +61,48 @@ export async function register(input: RegisterInput): Promise<User> {
   }
 }
 
-export async function login(input: LoginInput): Promise<{ user: User } & AuthTokens> {
+export type LoginResult =
+  | ({ twoFactorRequired: false; user: User } & AuthTokens)
+  | { twoFactorRequired: true; challengeToken: string };
+
+export async function login(input: LoginInput): Promise<LoginResult> {
   const user = await User.findOne({ where: { email: input.email } });
 
   // Même message si l'email est inconnu ou si le mot de passe est faux
   if (!user || !(await user.comparePassword(input.password))) {
     throw AppError.unauthorized("Email ou mot de passe incorrect");
+  }
+
+  // 2FA activée : pas encore de session, seulement un challenge à compléter avec le code
+  if (await twoFactorService.isEnabled(user.id)) {
+    return { twoFactorRequired: true, challengeToken: signTwoFactorChallenge(user.id) };
+  }
+
+  return { twoFactorRequired: false, user, ...(await createSession(user)) };
+}
+
+/** Deuxième étape du login : challenge (mot de passe déjà validé) + code de l'appli. */
+export async function loginWithTwoFactor(
+  input: LoginTwoFactorInput,
+): Promise<{ user: User } & AuthTokens> {
+  let challenge: TwoFactorChallenge;
+  try {
+    challenge = verifyTwoFactorChallenge(input.challengeToken);
+  } catch {
+    throw AppError.unauthorized("Connexion expirée, reconnectez-vous");
+  }
+
+  assertChallengeUsable(challenge);
+
+  if (!(await twoFactorService.verifyLoginCode(challenge.sub, input.code))) {
+    recordFailedAttempt(challenge);
+    throw AppError.unauthorized("Code invalide");
+  }
+  markChallengeUsed(challenge);
+
+  const user = await User.findByPk(challenge.sub);
+  if (!user) {
+    throw AppError.unauthorized("Utilisateur introuvable");
   }
 
   return { user, ...(await createSession(user)) };
