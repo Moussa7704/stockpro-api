@@ -1,10 +1,8 @@
 import { UniqueConstraintError } from "sequelize";
 import { User } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
-import type { LoginInput, RegisterInput } from "./auth.schemas.js";
-
 import { signAccessToken } from "../../utils/jwt.js";
-
+import type { LoginInput, RegisterInput } from "./auth.schemas.js";
 
 export async function register(input: RegisterInput): Promise<User> {
   try {
@@ -29,4 +27,15 @@ export async function login(input: LoginInput): Promise<{ user: User; accessToke
 
   const accessToken = signAccessToken({ sub: user.id, role: user.role });
   return { user, accessToken };
+}
+
+export async function getMe(userId: string): Promise<User> {
+  const user = await User.findByPk(userId);
+
+  // Le token peut être encore valide alors que le compte a été supprimé
+  if (!user) {
+    throw AppError.unauthorized("Utilisateur introuvable");
+  }
+
+  return user;
 }

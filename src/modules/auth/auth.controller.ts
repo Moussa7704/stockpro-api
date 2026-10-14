@@ -11,3 +11,9 @@ export async function login(req: Request, res: Response): Promise<void> {
   const { user, accessToken } = await authService.login(req.body);
   res.json({ user, accessToken });
 }
+
+export async function me(req: Request, res: Response): Promise<void> {
+  // req.user est garanti par le middleware authenticate placé avant
+  const user = await authService.getMe(req.user!.sub);
+  res.json({ user });
+}
