@@ -2,6 +2,7 @@ import type { CookieOptions, Request, Response } from "express";
 import { env } from "../../config/env.js";
 import { AppError } from "../../utils/app-error.js";
 import * as authService from "./auth.service.js";
+import * as twoFactorService from "./two-factor.service.js";
 
 const REFRESH_COOKIE = "refreshToken";
 
@@ -34,9 +35,23 @@ export async function register(req: Request, res: Response): Promise<void> {
 }
 
 export async function login(req: Request, res: Response): Promise<void> {
-  const { user, accessToken, refreshToken } = await authService.login(req.body);
+  const result = await authService.login(req.body);
+
+  // 2FA activée : le client doit appeler POST /login/2fa avec ce challenge et le code
+  if (result.twoFactorRequired) {
+    res.json({ twoFactorRequired: true, challengeToken: result.challengeToken });
+    return;
+  }
+
+  setRefreshCookie(res, result.refreshToken);
+  res.json({ twoFactorRequired: false, user: result.user, accessToken: result.accessToken });
+}
+
+export async function loginWithTwoFactor(req: Request, res: Response): Promise<void> {
+  const { user, accessToken, refreshToken, backupCodesRemaining } =
+    await authService.loginWithTwoFactor(req.body);
   setRefreshCookie(res, refreshToken);
-  res.json({ user, accessToken });
+  res.json({ user, accessToken, backupCodesRemaining });
 }
 
 export async function refresh(req: Request, res: Response): Promise<void> {
@@ -64,5 +79,6 @@ export async function logout(req: Request, res: Response): Promise<void> {
 export async function me(req: Request, res: Response): Promise<void> {
   // req.user est garanti par le middleware authenticate placé avant
   const user = await authService.getMe(req.user!.sub);
-  res.json({ user });
+  const twoFactorEnabled = await twoFactorService.isEnabled(user.id);
+  res.json({ user, twoFactorEnabled });
 }

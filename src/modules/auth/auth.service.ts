@@ -3,8 +3,19 @@ import { UniqueConstraintError } from "sequelize";
 import { env } from "../../config/env.js";
 import { RefreshToken, User } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
-import { signAccessToken } from "../../utils/jwt.js";
-import type { LoginInput, RegisterInput } from "./auth.schemas.js";
+import {
+  signAccessToken,
+  signTwoFactorChallenge,
+  verifyTwoFactorChallenge,
+  type TwoFactorChallenge,
+} from "../../utils/jwt.js";
+import type { LoginInput, LoginTwoFactorInput, RegisterInput } from "./auth.schemas.js";
+import {
+  assertChallengeUsable,
+  markChallengeUsed,
+  recordFailedAttempt,
+} from "./challenge-attempts.js";
+import * as twoFactorService from "./two-factor.service.js";
 
 export interface AuthTokens {
   accessToken: string;
@@ -50,7 +61,11 @@ export async function register(input: RegisterInput): Promise<User> {
   }
 }
 
-export async function login(input: LoginInput): Promise<{ user: User } & AuthTokens> {
+export type LoginResult =
+  | ({ twoFactorRequired: false; user: User } & AuthTokens)
+  | { twoFactorRequired: true; challengeToken: string };
+
+export async function login(input: LoginInput): Promise<LoginResult> {
   const user = await User.findOne({ where: { email: input.email } });
 
   // Même message si l'email est inconnu ou si le mot de passe est faux
@@ -58,7 +73,49 @@ export async function login(input: LoginInput): Promise<{ user: User } & AuthTok
     throw AppError.unauthorized("Email ou mot de passe incorrect");
   }
 
-  return { user, ...(await createSession(user)) };
+  // 2FA activée : pas encore de session, seulement un challenge à compléter avec le code
+  if (await twoFactorService.isEnabled(user.id)) {
+    return { twoFactorRequired: true, challengeToken: signTwoFactorChallenge(user.id) };
+  }
+
+  return { twoFactorRequired: false, user, ...(await createSession(user)) };
+}
+
+/**
+ * Deuxième étape du login : challenge (mot de passe déjà validé) + code de l'appli ou de secours.
+ * backupCodesRemaining n'est renseigné que si un code de secours a été utilisé.
+ */
+export async function loginWithTwoFactor(
+  input: LoginTwoFactorInput,
+): Promise<{ user: User; backupCodesRemaining?: number } & AuthTokens> {
+  let challenge: TwoFactorChallenge;
+  try {
+    challenge = verifyTwoFactorChallenge(input.challengeToken);
+  } catch {
+    throw AppError.unauthorized("Connexion expirée, reconnectez-vous");
+  }
+
+  assertChallengeUsable(challenge);
+
+  const method = await twoFactorService.verifySecondFactor(challenge.sub, input.code);
+  if (!method) {
+    recordFailedAttempt(challenge);
+    throw AppError.unauthorized("Code invalide");
+  }
+  markChallengeUsed(challenge);
+
+  const user = await User.findByPk(challenge.sub);
+  if (!user) {
+    throw AppError.unauthorized("Utilisateur introuvable");
+  }
+
+  const session = await createSession(user);
+  if (method === "backup") {
+    // Le client peut avertir l'utilisateur quand il ne lui reste presque plus de codes
+    const backupCodesRemaining = await twoFactorService.countRemainingBackupCodes(user.id);
+    return { user, ...session, backupCodesRemaining };
+  }
+  return { user, ...session };
 }
 
 /**
