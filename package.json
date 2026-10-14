@@ -7,7 +7,13 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "db": "tsx src/database/cli.ts",
+    "db:migrate": "tsx src/database/cli.ts up",
+    "db:migrate:undo": "tsx src/database/cli.ts down",
+    "db:migrate:status": "tsx src/database/cli.ts pending && tsx src/database/cli.ts executed",
+    "db:migration:create": "tsx src/database/cli.ts create --name",
+    "db:migrate:prod": "node dist/database/cli.js up"
   },
   "devEngines": {
     "packageManager": {
@@ -27,6 +33,7 @@
     "pg-hstore": "^2.3.4",
     "qrcode": "^1.5.4",
     "sequelize": "^6.37.8",
+    "umzug": "^3.8.3",
     "zod": "^4.6.7"
   },
   "devDependencies": {
