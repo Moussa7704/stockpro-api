@@ -81,10 +81,13 @@ export async function login(input: LoginInput): Promise<LoginResult> {
   return { twoFactorRequired: false, user, ...(await createSession(user)) };
 }
 
-/** Deuxième étape du login : challenge (mot de passe déjà validé) + code de l'appli. */
+/**
+ * Deuxième étape du login : challenge (mot de passe déjà validé) + code de l'appli ou de secours.
+ * backupCodesRemaining n'est renseigné que si un code de secours a été utilisé.
+ */
 export async function loginWithTwoFactor(
   input: LoginTwoFactorInput,
-): Promise<{ user: User } & AuthTokens> {
+): Promise<{ user: User; backupCodesRemaining?: number } & AuthTokens> {
   let challenge: TwoFactorChallenge;
   try {
     challenge = verifyTwoFactorChallenge(input.challengeToken);
@@ -94,7 +97,8 @@ export async function loginWithTwoFactor(
 
   assertChallengeUsable(challenge);
 
-  if (!(await twoFactorService.verifyLoginCode(challenge.sub, input.code))) {
+  const method = await twoFactorService.verifySecondFactor(challenge.sub, input.code);
+  if (!method) {
     recordFailedAttempt(challenge);
     throw AppError.unauthorized("Code invalide");
   }
@@ -105,7 +109,13 @@ export async function loginWithTwoFactor(
     throw AppError.unauthorized("Utilisateur introuvable");
   }
 
-  return { user, ...(await createSession(user)) };
+  const session = await createSession(user);
+  if (method === "backup") {
+    // Le client peut avertir l'utilisateur quand il ne lui reste presque plus de codes
+    const backupCodesRemaining = await twoFactorService.countRemainingBackupCodes(user.id);
+    return { user, ...session, backupCodesRemaining };
+  }
+  return { user, ...session };
 }
 
 /**

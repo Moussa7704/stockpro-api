@@ -7,6 +7,7 @@ import {
   loginTwoFactorSchema,
   registerSchema,
   twoFactorCodeSchema,
+  twoFactorConfirmSchema,
 } from "./auth.schemas.js";
 import * as twoFactorController from "./two-factor.controller.js";
 
@@ -30,4 +31,16 @@ authRoutes.post(
   authenticate,
   validateBody(twoFactorCodeSchema),
   twoFactorController.enable,
+);
+authRoutes.post(
+  "/2fa/disable",
+  authenticate,
+  validateBody(twoFactorConfirmSchema),
+  twoFactorController.disable,
+);
+authRoutes.post(
+  "/2fa/backup-codes",
+  authenticate,
+  validateBody(twoFactorConfirmSchema),
+  twoFactorController.regenerateBackupCodes,
 );
