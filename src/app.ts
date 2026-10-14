@@ -1,3 +1,4 @@
+import cookieParser from "cookie-parser";
 import express from "express";
 import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
@@ -5,6 +6,7 @@ import { authRoutes } from "./modules/auth/auth.routes.js";
 export const app = express();
 
 app.use(express.json());
+app.use(cookieParser()); // remplit req.cookies (refresh token)
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
