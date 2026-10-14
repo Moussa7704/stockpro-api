@@ -21,5 +21,15 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+// Les applis affichent souvent "123 456" : on retire les espaces avant de vérifier
+const totpCode = z
+  .string()
+  .transform((value) => value.replace(/\s/g, ""))
+  .pipe(z.string().regex(/^\d{6}$/, "Le code doit contenir 6 chiffres"));
+
+export const twoFactorCodeSchema = z.object({
+  code: totpCode,
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
