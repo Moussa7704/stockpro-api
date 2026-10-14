@@ -32,16 +32,17 @@ const envSchema = z.object({
     .string()
     .regex(/^[0-9a-f]{64}$/i, "doit contenir 64 caractères hexadécimaux (32 octets)"),
 
-  // Envoi des emails (codes OTP). Gmail : smtp.gmail.com, port 465, SMTP_SECURE=true,
-  // et un "mot de passe d'application" Google (pas le mot de passe du compte)
-  SMTP_HOST: z.string().min(1),
+  // Envoi des emails (codes OTP) : compte Gmail + "mot de passe d'application" Google
+  // (pas le mot de passe du compte). Mêmes noms que dans les autres projets.
+  EMAIL_USER: z.string().min(1),
+  EMAIL_PASS: z.string().min(1),
+  // Serveur SMTP : Gmail par défaut, à changer seulement pour un autre fournisseur
+  SMTP_HOST: z.string().min(1).default("smtp.gmail.com"),
   SMTP_PORT: z.coerce.number().int().positive().default(465),
   // true = TLS dès la connexion (port 465) ; false = STARTTLS (port 587)
   SMTP_SECURE: z.stringbool().default(true),
-  SMTP_USER: z.string().min(1),
-  SMTP_PASSWORD: z.string().min(1),
-  // Expéditeur affiché, ex. "StockPro <moncompte@gmail.com>"
-  MAIL_FROM: z.string().min(1),
+  // Expéditeur affiché ; par défaut "StockPro <EMAIL_USER>"
+  MAIL_FROM: z.string().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

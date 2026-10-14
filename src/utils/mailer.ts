@@ -6,8 +6,10 @@ const transporter = nodemailer.createTransport({
   host: env.SMTP_HOST,
   port: env.SMTP_PORT,
   secure: env.SMTP_SECURE,
-  auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD },
+  auth: { user: env.EMAIL_USER, pass: env.EMAIL_PASS },
 });
+
+const from = env.MAIL_FROM ?? `"StockPro" <${env.EMAIL_USER}>`;
 
 // Le nom vient de l'utilisateur (inscription) : on l'échappe pour qu'il ne puisse pas injecter de HTML
 function escapeHtml(value: string): string {
@@ -30,7 +32,7 @@ export async function sendOtpEmail({ to, name, code, expiresInMinutes }: OtpEmai
   const safeName = escapeHtml(name);
 
   await transporter.sendMail({
-    from: env.MAIL_FROM,
+    from,
     to,
     subject: `${code} est votre code de connexion StockPro`,
     // Version texte : lue par les clients mail sans HTML et utile contre le classement en spam

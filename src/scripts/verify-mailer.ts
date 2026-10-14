@@ -18,8 +18,8 @@ try {
 } catch (error) {
   console.error("❌ Échec SMTP :", error instanceof Error ? error.message : error);
   console.error(
-    "Gmail : SMTP_HOST=smtp.gmail.com, SMTP_PORT=465, SMTP_SECURE=true, " +
-      "SMTP_PASSWORD = mot de passe d'application (16 caractères), pas celui du compte.",
+    "Gmail : EMAIL_USER = ton adresse, EMAIL_PASS = mot de passe d'application " +
+      "(16 caractères, ex. \"abcd efgh ijkl mnop\"), pas le mot de passe du compte.",
   );
   process.exitCode = 1;
 }
