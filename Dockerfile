@@ -14,10 +14,16 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN pnpm build
 
-# ---- Production : dépendances de prod + code compilé uniquement ----
-FROM base AS production
-ENV NODE_ENV=production
+# ---- Dépendances de production seules ----
+FROM base AS prod-deps
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm-store pnpm install --frozen-lockfile --prod --store-dir /pnpm-store
+
+# ---- Image finale : Node + dépendances de prod + code compilé (ni pnpm, ni sources TypeScript) ----
+FROM node:22-slim AS production
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --chown=node:node package.json ./
+COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 # Jamais en root dans le conteneur
 USER node
