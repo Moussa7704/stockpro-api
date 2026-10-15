@@ -360,7 +360,7 @@ COMMIT   -- au moindre échec : ROLLBACK complet
 | Étape | Contenu | Statut |
 |---|---|---|
 | 0 | Fondations, authentification (OTP email, sessions, mots de passe, invitations), tests, CI | ✅ Livré |
-| 1 | **Socle multi-entreprise** : entreprises, boutiques, appartenances, rôles/permissions, entreprise active, back-office plateforme, audit, test d'isolation type | À faire |
+| 1 | **Socle multi-entreprise** : entreprises, boutiques, appartenances, rôles/permissions, entreprise active, back-office plateforme, audit, test d'isolation type | ✅ API livrée — écrans à faire |
 | 2 | Catalogue : unités, catégories, produits, fournisseurs, pagination et recherche | |
 | 3 | Stock : niveaux, mouvements, ajustements, inventaires, transferts, alertes | |
 | 4 | Achats : commandes, réceptions (CMP), retours, factures et dettes fournisseurs | |

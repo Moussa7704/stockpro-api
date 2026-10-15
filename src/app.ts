@@ -4,8 +4,12 @@ import helmet from "helmet";
 import { env } from "./config/env.js";
 import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js";
 import { apiLimiter } from "./middlewares/rate-limit.middleware.js";
+import { accessRoutes } from "./modules/access/access.routes.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
-import { usersRoutes } from "./modules/users/users.routes.js";
+import { companyRoutes } from "./modules/company/company.module.js";
+import { membersRoutes } from "./modules/members/members.routes.js";
+import { platformRoutes } from "./modules/platform/platform.routes.js";
+import { shopsRoutes } from "./modules/shops/shops.routes.js";
 
 export const app = express();
 
@@ -27,7 +31,13 @@ app.get("/health", (_req, res) => {
 
 app.use("/api", apiLimiter);
 app.use("/api/auth", authRoutes);
-app.use("/api/users", usersRoutes);
+// Back-office de l'administrateur SaaS
+app.use("/api/platform", platformRoutes);
+// Entreprise active (company_id du token)
+app.use("/api/company", companyRoutes);
+app.use("/api/shops", shopsRoutes);
+app.use("/api/members", membersRoutes);
+app.use("/api", accessRoutes);
 
 // Toujours en dernier : 404 puis gestionnaire d'erreurs
 app.use(notFoundHandler);

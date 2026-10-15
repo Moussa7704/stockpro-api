@@ -1,11 +1,12 @@
 import { createHmac } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
-import { USER_ROLES, type UserRole } from "../models/user.model.js";
 
 export interface AccessTokenPayload {
   sub: string; // "subject" : l'id de l'utilisateur (nom standard dans les JWT)
-  role: UserRole;
+  // Entreprise active (null : aucune choisie). Le rôle et les permissions ne sont PAS dans le
+  // token : ils sont relus en base à chaque requête, pour qu'un retrait de droits soit immédiat.
+  companyId: string | null;
 }
 
 export interface LoginChallenge {
@@ -22,10 +23,6 @@ const challengeSecret = createHmac("sha256", env.JWT_ACCESS_SECRET)
   .update("login-otp-challenge")
   .digest();
 
-function isUserRole(value: unknown): value is UserRole {
-  return USER_ROLES.includes(value as UserRole);
-}
-
 export function signAccessToken(payload: AccessTokenPayload): string {
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
     algorithm: "HS256",
@@ -38,11 +35,16 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
   // algorithms est imposé : on refuse tout token signé autrement (ex. "alg": "none")
   const payload = jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: ["HS256"] });
 
-  if (typeof payload === "string" || typeof payload.sub !== "string" || !isUserRole(payload.role)) {
+  const companyId: unknown = typeof payload === "string" ? undefined : payload.companyId;
+  if (
+    typeof payload === "string" ||
+    typeof payload.sub !== "string" ||
+    !(companyId === null || typeof companyId === "string")
+  ) {
     throw new jwt.JsonWebTokenError("Payload invalide");
   }
 
-  return { sub: payload.sub, role: payload.role };
+  return { sub: payload.sub, companyId };
 }
 
 /** Jeton intermédiaire du login : prouve que le mot de passe a été validé, rien de plus. */

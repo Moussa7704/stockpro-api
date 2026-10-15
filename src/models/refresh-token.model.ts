@@ -18,6 +18,8 @@ export class RefreshToken extends Model<
 > {
   declare id: CreationOptional<string>;
   declare userId: string;
+  // Entreprise active de la session (null : aucune choisie, ou administrateur SaaS)
+  declare companyId: CreationOptional<string | null>;
   declare tokenHash: string;
   declare expiresAt: Date;
   declare revokedAt: CreationOptional<Date | null>;
@@ -35,6 +37,10 @@ RefreshToken.init(
     userId: {
       type: DataTypes.UUID,
       allowNull: false,
+    },
+    companyId: {
+      type: DataTypes.UUID,
+      allowNull: true,
     },
     tokenHash: {
       type: DataTypes.STRING(64),

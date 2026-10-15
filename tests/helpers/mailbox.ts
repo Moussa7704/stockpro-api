@@ -7,7 +7,8 @@ export type SentEmail =
   | { type: "otp"; to: string; code: string }
   | { type: "invitation"; to: string; link: string }
   | { type: "reset"; to: string; link: string }
-  | { type: "password-changed"; to: string };
+  | { type: "password-changed"; to: string }
+  | { type: "company-access"; to: string; companyName: string };
 
 export const mailbox: SentEmail[] = [];
 

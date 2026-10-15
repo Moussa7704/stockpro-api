@@ -19,6 +19,9 @@ vi.mock("../src/utils/mailer.js", async () => {
     sendPasswordChangedEmail: vi.fn(async ({ to }: { to: string }) => {
       mailbox.push({ type: "password-changed", to });
     }),
+    sendCompanyAccessEmail: vi.fn(async ({ to, companyName }: { to: string; companyName: string }) => {
+      mailbox.push({ type: "company-access", to, companyName });
+    }),
     verifyMailer: vi.fn(async () => {}),
   };
 });
@@ -28,7 +31,8 @@ assertTestDatabase();
 // Chaque test part de tables vides : aucun test ne dépend d'un autre
 beforeEach(async () => {
   await sequelize.query(
-    "TRUNCATE TABLE users, refresh_tokens, email_otp_codes, password_tokens RESTART IDENTITY CASCADE;",
+    `TRUNCATE TABLE audit_logs, membership_shops, memberships, role_permissions, roles, shops,
+       companies, refresh_tokens, email_otp_codes, password_tokens, users RESTART IDENTITY CASCADE;`,
   );
   clearMailbox();
 });

@@ -82,6 +82,8 @@ interface InvitationEmail {
   to: string;
   name: string;
   invitedBy: string;
+  // Entreprise rejointe (absente pour l'administrateur de la plateforme)
+  companyName?: string;
   link: string;
   expiresInHours: number;
 }
@@ -90,25 +92,65 @@ export async function sendInvitationEmail({
   to,
   name,
   invitedBy,
+  companyName,
   link,
   expiresInHours,
 }: InvitationEmail): Promise<void> {
+  const intro = companyName
+    ? `${invitedBy} vous invite à rejoindre ${companyName} sur StockPro.`
+    : `${invitedBy} vous a créé un compte sur StockPro.`;
+
   await transporter.sendMail({
     from,
     to,
-    subject: "Votre compte StockPro a été créé",
+    subject: companyName ? `Invitation à rejoindre ${companyName} sur StockPro` : "Votre compte StockPro a été créé",
     text: [
       `Bonjour ${name},`,
       "",
-      `${invitedBy} vous a créé un compte sur StockPro.`,
+      intro,
       `Choisissez votre mot de passe en ouvrant ce lien (valable ${expiresInHours} heures) :`,
       link,
     ].join("\n"),
     html: layout(`
       <p>Bonjour ${escapeHtml(name)},</p>
-      <p>${escapeHtml(invitedBy)} vous a créé un compte sur StockPro.</p>
+      <p>${escapeHtml(intro)}</p>
       <p>Choisissez votre mot de passe pour l'activer. Ce lien est valable ${expiresInHours} heures.</p>
       ${button(link, "Définir mon mot de passe")}
+    `),
+  });
+}
+
+interface CompanyAccessEmail {
+  to: string;
+  name: string;
+  invitedBy: string;
+  companyName: string;
+  loginUrl: string;
+}
+
+/** Utilisateur qui a déjà un compte, ajouté à une nouvelle entreprise : pas de mot de passe à choisir. */
+export async function sendCompanyAccessEmail({
+  to,
+  name,
+  invitedBy,
+  companyName,
+  loginUrl,
+}: CompanyAccessEmail): Promise<void> {
+  await transporter.sendMail({
+    from,
+    to,
+    subject: `Vous avez accès à ${companyName} sur StockPro`,
+    text: [
+      `Bonjour ${name},`,
+      "",
+      `${invitedBy} vous a donné accès à ${companyName} sur StockPro.`,
+      `Connectez-vous avec votre compte habituel puis choisissez cette entreprise : ${loginUrl}`,
+    ].join("\n"),
+    html: layout(`
+      <p>Bonjour ${escapeHtml(name)},</p>
+      <p>${escapeHtml(invitedBy)} vous a donné accès à <strong>${escapeHtml(companyName)}</strong> sur StockPro.</p>
+      <p>Connectez-vous avec votre compte habituel, puis choisissez cette entreprise.</p>
+      ${button(loginUrl, "Se connecter")}
     `),
   });
 }
