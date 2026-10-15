@@ -48,11 +48,18 @@ export const apiLimiter = createLimiter({
   message: "Trop de requêtes, réessayez dans quelques minutes",
 });
 
-/** Création de comptes, par IP. */
-export const registerLimiter = createLimiter({
-  windowMs: 60 * MINUTE,
+/** Demandes "mot de passe oublié", par IP (chaque demande peut envoyer un email). */
+export const forgotPasswordLimiter = createLimiter({
+  windowMs: 15 * MINUTE,
   limit: 5,
-  message: "Trop de comptes créés, réessayez plus tard",
+  message: "Trop de demandes, réessayez dans 15 minutes",
+});
+
+/** Vérification / utilisation d'un lien de mot de passe, par IP. */
+export const passwordTokenLimiter = createLimiter({
+  windowMs: 15 * MINUTE,
+  limit: 20,
+  message: "Trop de tentatives, réessayez dans 15 minutes",
 });
 
 /** Échecs de login par IP : bloque un attaquant qui essaie beaucoup de comptes. */

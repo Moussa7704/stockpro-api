@@ -2,6 +2,7 @@ import type { CookieOptions, Request, Response } from "express";
 import { env } from "../../config/env.js";
 import { AppError } from "../../utils/app-error.js";
 import * as authService from "./auth.service.js";
+import * as passwordService from "./password.service.js";
 
 const REFRESH_COOKIE = "refreshToken";
 
@@ -25,12 +26,6 @@ function setRefreshCookie(res: Response, refreshToken: string): void {
 function getRefreshCookie(req: Request): string | undefined {
   const token: unknown = req.cookies?.[REFRESH_COOKIE];
   return typeof token === "string" ? token : undefined;
-}
-
-export async function register(req: Request, res: Response): Promise<void> {
-  // req.body a déjà été validé et nettoyé par validateBody(registerSchema)
-  const user = await authService.register(req.body);
-  res.status(201).json({ user });
 }
 
 export async function login(req: Request, res: Response): Promise<void> {
@@ -76,4 +71,20 @@ export async function me(req: Request, res: Response): Promise<void> {
   // req.user est garanti par le middleware authenticate placé avant
   const user = await authService.getMe(req.user!.sub);
   res.json({ user });
+}
+
+export async function forgotPassword(req: Request, res: Response): Promise<void> {
+  await passwordService.requestPasswordReset(req.body.email);
+  // Toujours la même réponse : on ne révèle pas si un compte existe avec cet email
+  res.json({ message: "Si un compte existe avec cet email, un lien de réinitialisation a été envoyé" });
+}
+
+export async function checkPasswordToken(req: Request, res: Response): Promise<void> {
+  const result = await passwordService.inspectToken(req.body.token);
+  res.json(result);
+}
+
+export async function resetPassword(req: Request, res: Response): Promise<void> {
+  await passwordService.setPasswordWithToken(req.body.token, req.body.password);
+  res.json({ message: "Mot de passe enregistré, vous pouvez vous connecter" });
 }
