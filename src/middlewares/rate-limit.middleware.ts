@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
+import { env } from "../config/env.js";
 import { AppError } from "../utils/app-error.js";
 
 /**
@@ -29,6 +30,8 @@ function ipKey(req: Request): string {
 
 function createLimiter(options: LimiterOptions) {
   return rateLimit({
+    // Tests automatisés uniquement : jamais à false en dev ni en production
+    skip: () => !env.RATE_LIMIT_ENABLED,
     windowMs: options.windowMs,
     limit: options.limit,
     skipSuccessfulRequests: options.skipSuccessfulRequests ?? false,

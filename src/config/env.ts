@@ -13,6 +13,8 @@ const envSchema = z.object({
   // Nombre de reverse proxies devant l'API (nginx, load balancer…). 0 = accès direct.
   // Sert à lire la vraie IP du client dans X-Forwarded-For (indispensable au rate limiting)
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+  // Désactivé uniquement par les tests automatisés (des centaines de requêtes en quelques secondes)
+  RATE_LIMIT_ENABLED: z.stringbool().default(true),
   // Adresse du front : sert à construire les liens envoyés par email (invitation, mot de passe oublié)
   CLIENT_URL: z.url().default("http://localhost:5173"),
 
