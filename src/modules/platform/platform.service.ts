@@ -4,6 +4,7 @@ import { Company, Membership, Shop, User } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
 import { createSystemRoles } from "../access/roles.service.js";
 import { pick, recordAudit, type AuditActor } from "../audit/audit.service.js";
+import { createDefaultUnits } from "../catalog/units.service.js";
 import * as passwordService from "../auth/password.service.js";
 import type { CreateCompanyInput, UpdateCompanyInput } from "./platform.schemas.js";
 
@@ -78,6 +79,7 @@ export async function createCompany(input: CreateCompanyInput, actor: AuditActor
       );
 
       const roles = await createSystemRoles(company.id, transaction);
+      await createDefaultUnits(company.id, transaction);
       const shop = await Shop.create(
         { companyId: company.id, name: input.shopName, code: "BTQ1" },
         { transaction },

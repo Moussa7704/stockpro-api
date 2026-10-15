@@ -6,6 +6,12 @@ import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js
 import { apiLimiter } from "./middlewares/rate-limit.middleware.js";
 import { accessRoutes } from "./modules/access/access.routes.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
+import {
+  categoriesRoutes,
+  productsRoutes,
+  suppliersRoutes,
+  unitsRoutes,
+} from "./modules/catalog/catalog.routes.js";
 import { companyRoutes } from "./modules/company/company.module.js";
 import { membersRoutes } from "./modules/members/members.routes.js";
 import { platformRoutes } from "./modules/platform/platform.routes.js";
@@ -37,6 +43,10 @@ app.use("/api/platform", platformRoutes);
 app.use("/api/company", companyRoutes);
 app.use("/api/shops", shopsRoutes);
 app.use("/api/members", membersRoutes);
+app.use("/api/units", unitsRoutes);
+app.use("/api/categories", categoriesRoutes);
+app.use("/api/suppliers", suppliersRoutes);
+app.use("/api/products", productsRoutes);
 app.use("/api", accessRoutes);
 
 // Toujours en dernier : 404 puis gestionnaire d'erreurs

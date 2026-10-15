@@ -9,6 +9,7 @@ import type { Permission } from "./permissions.js";
 export interface CompanyAccess {
   companyId: string;
   companyName: string;
+  currency: string; // ex. XOF : fixe le nombre de décimales des montants
   membershipId: string;
   roleCode: string;
   roleName: string;
@@ -34,7 +35,12 @@ export async function loadCompanyAccess(
   const membership = await Membership.findOne({
     where: { userId, companyId, status: "active" },
     include: [
-      { model: Company, as: "company", where: { status: "active" }, attributes: ["id", "name"] },
+      {
+        model: Company,
+        as: "company",
+        where: { status: "active" },
+        attributes: ["id", "name", "currency"],
+      },
       {
         model: Role,
         as: "role",
@@ -60,6 +66,7 @@ export async function loadCompanyAccess(
   return {
     companyId,
     companyName: membership.company.name,
+    currency: membership.company.currency,
     membershipId: membership.id,
     roleCode: membership.role.code,
     roleName: membership.role.name,
