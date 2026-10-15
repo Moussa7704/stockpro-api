@@ -1,3 +1,4 @@
+import { Decimal } from "decimal.js";
 import { z } from "zod";
 
 /**
@@ -51,4 +52,27 @@ export function sameDecimal(a: string | null | undefined, b: string | null | und
     return a == null && b == null;
   }
   return normalizeDecimal(a) === normalizeDecimal(b);
+}
+
+// --- Calculs monétaires (decimal.js : arithmétique décimale exacte, jamais de flottants)
+
+export { Decimal };
+
+/** Arrondi d'un montant à la précision de la devise (FCFA : à l'unité), demi supérieur. Format "1500.00". */
+export function roundMoney(value: Decimal.Value, currency: string): string {
+  return new Decimal(value).toDecimalPlaces(currencyDecimals(currency), Decimal.ROUND_HALF_UP).toFixed(2);
+}
+
+/** Total d'une ligne : quantité × prix unitaire, arrondi à la devise. */
+export function lineTotal(quantity: string, unitPrice: string, currency: string): string {
+  return roundMoney(new Decimal(quantity).times(unitPrice), currency);
+}
+
+/** Somme exacte de montants. */
+export function sumMoney(values: Decimal.Value[]): string {
+  return values.reduce<Decimal>((total, value) => total.plus(value), new Decimal(0)).toFixed(2);
+}
+
+export function compareDecimal(a: Decimal.Value, b: Decimal.Value): number {
+  return new Decimal(a).comparedTo(b);
 }

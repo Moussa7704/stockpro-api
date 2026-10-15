@@ -36,7 +36,7 @@ describe("Purge des données d'authentification", () => {
 
     const result = await runCleanup();
 
-    expect(result).toEqual({ refreshTokens: 1, otpCodes: 1, passwordTokens: 2 });
+    expect(result).toEqual({ refreshTokens: 1, otpCodes: 1, passwordTokens: 2, idempotencyKeys: 0 });
     expect(await RefreshToken.count()).toBe(1);
     expect(await EmailOtpCode.count()).toBe(1);
     expect(await PasswordToken.count()).toBe(1);
@@ -58,6 +58,6 @@ describe("Purge des données d'authentification", () => {
     await createUser({ email: EMAIL });
     await login(EMAIL);
 
-    expect(await runCleanup()).toEqual({ refreshTokens: 0, otpCodes: 0, passwordTokens: 0 });
+    expect(await runCleanup()).toEqual({ refreshTokens: 0, otpCodes: 0, passwordTokens: 0, idempotencyKeys: 0 });
   });
 });

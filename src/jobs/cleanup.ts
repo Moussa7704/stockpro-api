@@ -1,5 +1,5 @@
 import { Op } from "sequelize";
-import { EmailOtpCode, PasswordToken, RefreshToken } from "../models/index.js";
+import { EmailOtpCode, IdempotencyKey, PasswordToken, RefreshToken } from "../models/index.js";
 
 /**
  * Purge des données d'authentification devenues inutiles : sans elle, ces tables grossissent
@@ -13,6 +13,7 @@ export interface CleanupResult {
   refreshTokens: number;
   otpCodes: number;
   passwordTokens: number;
+  idempotencyKeys: number;
 }
 
 export async function runCleanup(now = new Date()): Promise<CleanupResult> {
@@ -36,7 +37,12 @@ export async function runCleanup(now = new Date()): Promise<CleanupResult> {
     },
   });
 
-  return { refreshTokens, otpCodes, passwordTokens };
+  // Clés d'idempotence de plus de 48 h : au-delà, plus aucun client ne rejoue sa requête
+  const idempotencyKeys = await IdempotencyKey.destroy({
+    where: { createdAt: { [Op.lt]: new Date(now.getTime() - 2 * DAY_MS) } },
+  });
+
+  return { refreshTokens, otpCodes, passwordTokens, idempotencyKeys };
 }
 
 /**
@@ -47,7 +53,7 @@ export function startCleanupJob(intervalMs = HOUR_MS): () => void {
   const run = () => {
     runCleanup()
       .then((result) => {
-        const total = result.refreshTokens + result.otpCodes + result.passwordTokens;
+        const total = result.refreshTokens + result.otpCodes + result.passwordTokens + result.idempotencyKeys;
         if (total > 0) {
           console.log("Purge auth :", result);
         }

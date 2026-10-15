@@ -30,6 +30,15 @@ assertTestDatabase();
 
 // Toutes les tables de l'application (enfants avant parents). À compléter à chaque nouvelle table.
 const TABLES = [
+  "idempotency_keys",
+  "supplier_payments",
+  "supplier_invoices",
+  "supplier_return_lines",
+  "supplier_returns",
+  "goods_receipt_lines",
+  "goods_receipts",
+  "purchase_order_lines",
+  "purchase_orders",
   "stock_movements",
   "inventory_count_lines",
   "inventory_counts",
