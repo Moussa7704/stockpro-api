@@ -30,6 +30,9 @@ assertTestDatabase();
 
 // Toutes les tables de l'application (enfants avant parents). À compléter à chaque nouvelle table.
 const TABLES = [
+  "expenses",
+  "expense_categories",
+  "customer_payments",
   "sale_return_lines",
   "sale_returns",
   "sale_payments",

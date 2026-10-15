@@ -20,8 +20,12 @@ function assertCanSetCreditLimit(access: CompanyAccess, creditLimit: string | nu
   }
 }
 
-export async function findCustomer(companyId: string, id: string, transaction?: Transaction) {
-  const customer = await Customer.findOne({ where: { id, companyId }, transaction });
+export async function findCustomer(companyId: string, id: string, transaction?: Transaction, lock = false) {
+  const customer = await Customer.findOne({
+    where: { id, companyId },
+    transaction,
+    ...(lock && transaction && { lock: transaction.LOCK.UPDATE }),
+  });
   if (!customer) {
     throw AppError.notFound("Client introuvable");
   }

@@ -20,6 +20,11 @@ export interface SessionSummary {
   salesTotal: string;
   byMethod: { methodId: string; name: string; type: string; amount: string }[];
   cashRefunds: string;
+  // Règlements de dettes clients encaissés pendant la session (tous moyens / espèces seules)
+  customerPayments: string;
+  cashCustomerPayments: string;
+  // Dépenses payées depuis le tiroir (hors annulées)
+  cashExpenses: string;
   expectedCash: string;
 }
 
@@ -48,10 +53,25 @@ export async function sessionSummary(session: CashSession, transaction?: Transac
     { replacements: { id: session.id }, type: QueryTypes.SELECT, transaction },
   );
 
+  const [other] = await sequelize.query<{ payments: string; cash_payments: string; expenses: string }>(
+    `SELECT
+       (SELECT COALESCE(sum(cp.amount), 0) FROM customer_payments cp WHERE cp.cash_session_id = :id) AS payments,
+       (SELECT COALESCE(sum(cp.amount), 0) FROM customer_payments cp
+          JOIN payment_methods pm ON pm.id = cp.payment_method_id
+          WHERE cp.cash_session_id = :id AND pm.type = 'cash') AS cash_payments,
+       (SELECT COALESCE(sum(e.amount), 0) FROM expenses e
+          WHERE e.cash_session_id = :id AND e.status = 'recorded') AS expenses`,
+    { replacements: { id: session.id }, type: QueryTypes.SELECT, transaction },
+  );
+
   const cashIn = byMethod
     .filter((row) => row.type === "cash")
     .reduce((total, row) => total.plus(row.amount), new Decimal(0));
-  const expectedCash = new Decimal(session.openingFloat).plus(cashIn).minus(refunds!.amount);
+  const expectedCash = new Decimal(session.openingFloat)
+    .plus(cashIn)
+    .minus(refunds!.amount)
+    .plus(other!.cash_payments)
+    .minus(other!.expenses);
 
   return {
     salesCount: Number(sales!.count),
@@ -63,6 +83,9 @@ export async function sessionSummary(session: CashSession, transaction?: Transac
       amount: new Decimal(row.amount).toFixed(2),
     })),
     cashRefunds: new Decimal(refunds!.amount).toFixed(2),
+    customerPayments: new Decimal(other!.payments).toFixed(2),
+    cashCustomerPayments: new Decimal(other!.cash_payments).toFixed(2),
+    cashExpenses: new Decimal(other!.expenses).toFixed(2),
     expectedCash: expectedCash.toFixed(2),
   };
 }
