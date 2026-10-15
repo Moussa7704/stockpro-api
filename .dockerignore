@@ -1,7 +1,17 @@
+# Seul le nécessaire au build part dans le contexte Docker (plus rapide, aucun secret)
 node_modules
 dist
+coverage
+tests
+docs
 .git
+.github
+.vscode
 .env
+.env.*
 *.log
+*.md
 Dockerfile
-docker-compose.yml
+docker-compose*.yml
+vitest.config.ts
+tsconfig.test.json

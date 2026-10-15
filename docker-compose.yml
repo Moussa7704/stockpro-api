@@ -1,6 +1,23 @@
+# StockPro API + PostgreSQL. Les secrets viennent du fichier .env (voir .env.example).
+#   docker compose up -d --build     démarre la base, applique les migrations, lance l'API
+#   docker compose up -d db          base seule (pour développer avec pnpm dev, port 5433)
+
+# Configuration commune à l'API et au service de migration (même image)
+x-api: &api
+  build: .
+  image: stockpro-api
+  env_file: .env
+  environment:
+    NODE_ENV: production
+    PORT: 3000
+    # Dans le réseau Docker, la base s'appelle "db" et écoute sur 5432
+    DB_HOST: db
+    DB_PORT: 5432
+  init: true
+
 services:
   db:
-    image: postgres:15
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME}
@@ -17,21 +34,25 @@ services:
       timeout: 5s
       retries: 10
 
-  api:
-    build: .
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      NODE_ENV: production
-      PORT: 3000
-      # Dans le réseau Docker, la base s'appelle "db" et écoute sur 5432
-      DB_HOST: db
-      DB_PORT: 5432
-    ports:
-      - "${PORT:-3000}:3000"
+  # Applique les migrations en attente puis s'arrête ; l'API ne démarre qu'en cas de succès
+  migrate:
+    <<: *api
+    command: ["node", "dist/database/cli.js", "up"]
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
+
+  api:
+    <<: *api
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:

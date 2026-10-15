@@ -5,7 +5,7 @@ describe("Socle de l'API", () => {
   it("répond à /health", async () => {
     const response = await api().get("/health").expect(200);
 
-    expect(response.body).toEqual({ status: "ok" });
+    expect(response.body).toEqual({ status: "ok", database: "ok" });
   });
 
   it("pose les en-têtes de sécurité (helmet) et masque Express", async () => {
