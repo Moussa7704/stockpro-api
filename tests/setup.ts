@@ -28,12 +28,45 @@ vi.mock("../src/utils/mailer.js", async () => {
 
 assertTestDatabase();
 
-// Chaque test part de tables vides : aucun test ne dépend d'un autre
+// Toutes les tables de l'application (enfants avant parents). À compléter à chaque nouvelle table.
+const TABLES = [
+  "stock_movements",
+  "inventory_count_lines",
+  "inventory_counts",
+  "stock_transfer_lines",
+  "stock_transfers",
+  "stock_adjustments",
+  "stock_levels",
+  "document_sequences",
+  "products",
+  "categories",
+  "units",
+  "suppliers",
+  "audit_logs",
+  "membership_shops",
+  "memberships",
+  "role_permissions",
+  "roles",
+  "shops",
+  "companies",
+  "refresh_tokens",
+  "email_otp_codes",
+  "password_tokens",
+  "users",
+];
+
+/**
+ * Chaque test part de tables vides : aucun test ne dépend d'un autre.
+ * DELETE plutôt que TRUNCATE : TRUNCATE recrée les fichiers des tables (≈ 10 s pour 23 tables
+ * sous Windows, avant CHAQUE test), DELETE sur des tables presque vides prend quelques ms.
+ * session_replication_role = replica coupe les triggers le temps du nettoyage (dont le trigger
+ * "ajout seul" du journal de stock) : réservé à un superutilisateur, d'où TEST_DB_USER=postgres.
+ */
 beforeEach(async () => {
   await sequelize.query(
-    `TRUNCATE TABLE products, categories, units, suppliers,
-       audit_logs, membership_shops, memberships, role_permissions, roles, shops,
-       companies, refresh_tokens, email_otp_codes, password_tokens, users RESTART IDENTITY CASCADE;`,
+    `SET session_replication_role = replica;
+     ${TABLES.map((table) => `DELETE FROM ${table};`).join("\n")}
+     SET session_replication_role = DEFAULT;`,
   );
   clearMailbox();
 });
