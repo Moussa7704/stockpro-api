@@ -7,11 +7,14 @@ import {
   type InferCreationAttributes,
 } from "sequelize";
 import { sequelize } from "../config/database.js";
+import { env } from "../config/env.js";
 
 export const USER_ROLES = ["admin", "manager", "employee"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
-const SALT_ROUNDS = 12;
+// Coût 12 (~250 ms par hash) : freine la force brute en cas de fuite de la base.
+// En test seulement, coût 4 (~1 ms) : les tests créent des centaines de mots de passe
+const SALT_ROUNDS = env.NODE_ENV === "test" ? 4 : 12;
 
 export class User extends Model<InferAttributes<User>, InferCreationAttributes<User>> {
   declare id: CreationOptional<string>;
