@@ -10,6 +10,12 @@ import {
   verifyLoginChallenge,
   type LoginChallenge,
 } from "../../utils/jwt.js";
+import {
+  defaultCompanyId,
+  listUserCompanies,
+  loadCompanyAccess,
+  type CompanySummary,
+} from "../access/access.service.js";
 import type { ChangePasswordInput, LoginInput, LoginOtpInput } from "./auth.schemas.js";
 import * as otpService from "./otp.service.js";
 import * as passwordService from "./password.service.js";
@@ -26,17 +32,19 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-async function createSession(user: User): Promise<AuthTokens> {
+/** Ouvre une session ; companyId = entreprise active (null si aucune n'est choisie). */
+async function createSession(user: User, companyId: string | null): Promise<AuthTokens> {
   const refreshToken = randomBytes(32).toString("base64url");
 
   await RefreshToken.create({
     userId: user.id,
+    companyId,
     tokenHash: hashToken(refreshToken),
     expiresAt: new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * DAY_IN_MS),
   });
 
   return {
-    accessToken: signAccessToken({ sub: user.id, role: user.role }),
+    accessToken: signAccessToken({ sub: user.id, companyId }),
     refreshToken,
   };
 }
@@ -79,8 +87,15 @@ export async function login(input: LoginInput): Promise<LoginChallengeResult> {
   };
 }
 
+export interface LoginSessionResult extends AuthTokens {
+  user: User;
+  companies: CompanySummary[];
+  // Choisie automatiquement s'il n'y a qu'une entreprise ; sinon null → POST /auth/company
+  activeCompanyId: string | null;
+}
+
 /** Deuxième étape du login : challenge + code reçu par email → la session est créée. */
-export async function loginWithOtp(input: LoginOtpInput): Promise<{ user: User } & AuthTokens> {
+export async function loginWithOtp(input: LoginOtpInput): Promise<LoginSessionResult> {
   const challenge = readChallenge(input.challengeToken);
   await otpService.verifyCode(challenge, input.code);
 
@@ -89,7 +104,33 @@ export async function loginWithOtp(input: LoginOtpInput): Promise<{ user: User }
     throw AppError.unauthorized("Utilisateur introuvable");
   }
 
-  return { user, ...(await createSession(user)) };
+  const companies = await listUserCompanies(user.id);
+  const activeCompanyId = companies.length === 1 ? companies[0]!.id : null;
+  return { user, companies, activeCompanyId, ...(await createSession(user, activeCompanyId)) };
+}
+
+/**
+ * Change l'entreprise active de la session : nouvel access token, et la session (refresh token)
+ * retient ce choix pour les prochains renouvellements.
+ */
+export async function switchCompany(
+  userId: string,
+  companyId: string,
+  currentRefreshToken?: string,
+): Promise<{ accessToken: string }> {
+  // 404 et pas 403 : on ne révèle pas l'existence d'une entreprise à laquelle on n'a pas accès
+  if (!(await loadCompanyAccess(userId, companyId))) {
+    throw AppError.notFound("Entreprise introuvable");
+  }
+
+  if (currentRefreshToken) {
+    await RefreshToken.update(
+      { companyId },
+      { where: { userId, tokenHash: hashToken(currentRefreshToken), revokedAt: null } },
+    );
+  }
+
+  return { accessToken: signAccessToken({ sub: userId, companyId }) };
 }
 
 export async function resendOtp(challengeToken: string): Promise<{ expiresInSeconds: number }> {
@@ -135,7 +176,13 @@ export async function refresh(refreshToken: string): Promise<AuthTokens> {
     throw AppError.unauthorized("Utilisateur introuvable");
   }
 
-  return createSession(user);
+  // L'entreprise de la session est revérifiée : accès retiré entre-temps → plus d'entreprise active
+  let companyId = session.companyId ?? null;
+  if (companyId && !(await loadCompanyAccess(user.id, companyId))) {
+    companyId = await defaultCompanyId(user.id);
+  }
+
+  return createSession(user, companyId);
 }
 
 export async function logout(refreshToken: string): Promise<void> {
@@ -145,7 +192,21 @@ export async function logout(refreshToken: string): Promise<void> {
   );
 }
 
-export async function getMe(userId: string): Promise<User> {
+export interface MeResult {
+  user: User;
+  companies: CompanySummary[];
+  // Droits dans l'entreprise active : le front s'en sert pour afficher menus et boutons
+  activeCompany: {
+    id: string;
+    name: string;
+    role: { code: string; name: string };
+    permissions: string[];
+    allShops: boolean;
+    shopIds: string[];
+  } | null;
+}
+
+export async function getMe(userId: string, companyId: string | null): Promise<MeResult> {
   const user = await User.findByPk(userId);
 
   // Le token peut être encore valide alors que le compte a été supprimé
@@ -153,7 +214,21 @@ export async function getMe(userId: string): Promise<User> {
     throw AppError.unauthorized("Utilisateur introuvable");
   }
 
-  return user;
+  const companies = await listUserCompanies(userId);
+  const access = companyId ? await loadCompanyAccess(userId, companyId) : null;
+
+  return {
+    user,
+    companies,
+    activeCompany: access && {
+      id: access.companyId,
+      name: access.companyName,
+      role: { code: access.roleCode, name: access.roleName },
+      permissions: [...access.permissions].sort(),
+      allShops: access.allShops,
+      shopIds: access.shopIds,
+    },
+  };
 }
 
 /**

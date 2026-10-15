@@ -52,6 +52,10 @@ export const changePasswordSchema = z.object({
   newPassword: newPasswordSchema,
 });
 
+export const switchCompanySchema = z.object({
+  companyId: z.uuid("Identifiant d'entreprise invalide"),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type LoginOtpInput = z.infer<typeof loginOtpSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

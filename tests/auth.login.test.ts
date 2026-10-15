@@ -79,7 +79,7 @@ describe("POST /api/auth/login/otp (étape 2 : code reçu par email)", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.accessToken).toEqual(expect.any(String));
-    expect(response.body.user).toMatchObject({ email: EMAIL, role: "employee" });
+    expect(response.body.user).toMatchObject({ email: EMAIL, isPlatformAdmin: false });
     expect(response.body.user.password).toBeUndefined();
     expect(refreshCookieOf(response)).toEqual(expect.any(String));
   });

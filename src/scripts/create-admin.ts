@@ -6,13 +6,15 @@ import { emailSchema, nameSchema } from "../modules/auth/auth.schemas.js";
 import * as passwordService from "../modules/auth/password.service.js";
 
 /**
- * Crée le premier administrateur (il n'y a pas d'inscription publique).
+ * Crée l'administrateur de la plateforme SaaS (il gère les commerçants depuis /api/platform).
  *   pnpm user:create-admin --email admin@exemple.com --name "Prénom Nom"
  * L'admin reçoit un email pour définir son mot de passe.
- * Si le compte existe déjà, il devient admin (et reçoit une invitation s'il n'a pas de mot de passe).
+ * Si le compte existe déjà, il devient administrateur de la plateforme
+ * (et reçoit une invitation s'il n'a pas encore de mot de passe).
  */
 
 const argsSchema = z.object({ email: emailSchema, name: nameSchema });
+const sender = { invitedBy: "StockPro" };
 
 try {
   const { values } = parseArgs({
@@ -28,18 +30,18 @@ try {
     const existing = await User.findOne({ where: { email } });
 
     if (existing) {
-      await existing.update({ role: "admin" });
-      console.log(`✅ ${email} existait déjà : il est maintenant admin`);
+      await existing.update({ isPlatformAdmin: true });
+      console.log(`✅ ${email} existait déjà : il est maintenant administrateur de la plateforme`);
       if (existing.password === null) {
-        await passwordService.sendInvitation(existing, "StockPro");
+        await passwordService.sendInvitation(existing, sender);
         console.log("✉️  Invitation renvoyée pour définir le mot de passe");
       }
     } else {
       await sequelize.transaction(async (transaction) => {
-        const admin = await User.create({ email, name, role: "admin" }, { transaction });
-        await passwordService.sendInvitation(admin, "StockPro", transaction);
+        const admin = await User.create({ email, name, isPlatformAdmin: true }, { transaction });
+        await passwordService.sendInvitation(admin, sender, transaction);
       });
-      console.log(`✅ Admin ${email} créé`);
+      console.log(`✅ Administrateur de la plateforme ${email} créé`);
       console.log("✉️  Un email lui a été envoyé pour définir son mot de passe");
     }
   }

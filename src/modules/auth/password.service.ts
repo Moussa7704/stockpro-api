@@ -7,6 +7,7 @@ import type { PasswordTokenPurpose } from "../../models/password-token.model.js"
 import { AppError } from "../../utils/app-error.js";
 import { hmac } from "../../utils/crypto.js";
 import {
+  sendCompanyAccessEmail,
   sendInvitationEmail,
   sendPasswordChangedEmail,
   sendPasswordResetEmail,
@@ -80,9 +81,14 @@ async function findValidToken(token: string): Promise<PasswordToken> {
 }
 
 /** Invitation d'un compte créé par un admin. À appeler dans la transaction qui crée le compte. */
+export interface InvitationSender {
+  invitedBy: string; // nom de la personne qui invite (ou "StockPro")
+  companyName?: string; // entreprise rejointe
+}
+
 export async function sendInvitation(
   user: User,
-  invitedBy: string,
+  { invitedBy, companyName }: InvitationSender,
   transaction?: Transaction,
 ): Promise<void> {
   const token = await createToken(user.id, "invite", transaction);
@@ -91,12 +97,35 @@ export async function sendInvitation(
       to: user.email,
       name: user.name,
       invitedBy,
+      companyName,
       link: buildLink(token),
       expiresInHours: INVITE_TTL_HOURS,
     });
   } catch (error) {
     console.error("Échec de l'envoi de l'email d'invitation :", error);
     throw AppError.serviceUnavailable("Impossible d'envoyer l'email d'invitation, réessayez plus tard");
+  }
+}
+
+/**
+ * Prévient un utilisateur qui a déjà un compte qu'il a accès à une nouvelle entreprise.
+ * Envoyé dans la transaction de l'ajout : si l'email ne part pas, l'ajout est annulé.
+ */
+export async function notifyCompanyAccess(
+  user: User,
+  { invitedBy, companyName }: Required<InvitationSender>,
+): Promise<void> {
+  try {
+    await sendCompanyAccessEmail({
+      to: user.email,
+      name: user.name,
+      invitedBy,
+      companyName,
+      loginUrl: new URL("/login", env.CLIENT_URL).toString(),
+    });
+  } catch (error) {
+    console.error("Échec de l'envoi de l'email d'accès à l'entreprise :", error);
+    throw AppError.serviceUnavailable("Impossible d'envoyer l'email, réessayez plus tard");
   }
 }
 

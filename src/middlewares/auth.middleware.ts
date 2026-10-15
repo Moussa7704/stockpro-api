@@ -1,6 +1,7 @@
-import type { RequestHandler } from "express";
+import type { Request, RequestHandler } from "express";
 import { User } from "../models/index.js";
-import type { UserRole } from "../models/user.model.js";
+import { loadCompanyAccess, type CompanyAccess } from "../modules/access/access.service.js";
+import type { Permission } from "../modules/access/permissions.js";
 import { AppError } from "../utils/app-error.js";
 import { verifyAccessToken, type AccessTokenPayload } from "../utils/jwt.js";
 
@@ -26,25 +27,55 @@ export const authenticate: RequestHandler = (req, _res, next) => {
   next();
 };
 
-/**
- * Réserve une route à certains rôles. À placer APRÈS authenticate.
- * Le rôle est relu en base : un admin rétrogradé perd l'accès immédiatement,
- * sans attendre l'expiration de son access token (15 min) qui contient l'ancien rôle.
- */
-export function requireRole(...roles: UserRole[]): RequestHandler {
+/** Charge (une fois par requête) les droits de l'utilisateur dans son entreprise active. */
+async function resolveCompanyAccess(req: Request): Promise<CompanyAccess> {
+  if (req.company) {
+    return req.company;
+  }
+  if (!req.user) {
+    throw AppError.unauthorized("Token manquant");
+  }
+  if (!req.user.companyId) {
+    throw AppError.forbidden("Choisissez une entreprise");
+  }
+
+  // L'entreprise vient du token signé, jamais du corps ou de l'URL (RB-01) ;
+  // et l'appartenance est revérifiée : retirée ou désactivée → refus immédiat
+  const access = await loadCompanyAccess(req.user.sub, req.user.companyId);
+  if (!access) {
+    throw AppError.forbidden("Vous n'avez plus accès à cette entreprise");
+  }
+
+  req.company = access;
+  return access;
+}
+
+/** Route d'entreprise : exige une entreprise active accessible. À placer APRÈS authenticate. */
+export const requireCompany: RequestHandler = async (req, _res, next) => {
+  await resolveCompanyAccess(req);
+  next();
+};
+
+/** Exige TOUTES les permissions listées dans l'entreprise active. À placer APRÈS authenticate. */
+export function requirePermission(...permissions: Permission[]): RequestHandler {
   return async (req, _res, next) => {
-    if (!req.user) {
-      return next(AppError.unauthorized("Token manquant"));
+    const access = await resolveCompanyAccess(req);
+    if (!permissions.every((permission) => access.permissions.has(permission))) {
+      throw AppError.forbidden("Vous n'avez pas les droits pour cette action");
     }
-
-    const user = await User.findByPk(req.user.sub, { attributes: ["id", "role"] });
-    if (!user) {
-      return next(AppError.unauthorized("Utilisateur introuvable"));
-    }
-    if (!roles.includes(user.role)) {
-      return next(AppError.forbidden("Vous n'avez pas les droits pour cette action"));
-    }
-
     next();
   };
 }
+
+/** Back-office de la plateforme : réservé à l'administrateur SaaS (relu en base). */
+export const requirePlatformAdmin: RequestHandler = async (req, _res, next) => {
+  if (!req.user) {
+    throw AppError.unauthorized("Token manquant");
+  }
+
+  const user = await User.findByPk(req.user.sub, { attributes: ["id", "isPlatformAdmin"] });
+  if (!user?.isPlatformAdmin) {
+    throw AppError.forbidden("Réservé à l'administrateur de la plateforme");
+  }
+  next();
+};

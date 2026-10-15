@@ -35,9 +35,18 @@ export async function login(req: Request, res: Response): Promise<void> {
 }
 
 export async function loginWithOtp(req: Request, res: Response): Promise<void> {
-  const { user, accessToken, refreshToken } = await authService.loginWithOtp(req.body);
+  const { refreshToken, ...result } = await authService.loginWithOtp(req.body);
   setRefreshCookie(res, refreshToken);
-  res.json({ user, accessToken });
+  res.json(result);
+}
+
+export async function switchCompany(req: Request, res: Response): Promise<void> {
+  const result = await authService.switchCompany(
+    req.user!.sub,
+    req.body.companyId,
+    getRefreshCookie(req),
+  );
+  res.json(result);
 }
 
 export async function resendOtp(req: Request, res: Response): Promise<void> {
@@ -69,8 +78,8 @@ export async function logout(req: Request, res: Response): Promise<void> {
 
 export async function me(req: Request, res: Response): Promise<void> {
   // req.user est garanti par le middleware authenticate placé avant
-  const user = await authService.getMe(req.user!.sub);
-  res.json({ user });
+  const result = await authService.getMe(req.user!.sub, req.user!.companyId);
+  res.json(result);
 }
 
 export async function forgotPassword(req: Request, res: Response): Promise<void> {

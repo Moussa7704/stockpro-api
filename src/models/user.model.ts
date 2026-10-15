@@ -9,9 +9,6 @@ import {
 import { sequelize } from "../config/database.js";
 import { env } from "../config/env.js";
 
-export const USER_ROLES = ["admin", "manager", "employee"] as const;
-export type UserRole = (typeof USER_ROLES)[number];
-
 // Coût 12 (~250 ms par hash) : freine la force brute en cas de fuite de la base.
 // En test seulement, coût 4 (~1 ms) : les tests créent des centaines de mots de passe
 const SALT_ROUNDS = env.NODE_ENV === "test" ? 4 : 12;
@@ -22,7 +19,9 @@ export class User extends Model<InferAttributes<User>, InferCreationAttributes<U
   declare email: string;
   // null tant que l'utilisateur invité n'a pas défini son mot de passe
   declare password: CreationOptional<string | null>;
-  declare role: CreationOptional<UserRole>;
+  // Administrateur SaaS (gère les commerçants). Les rôles métier dépendent de l'entreprise :
+  // ils sont portés par memberships, pas par l'utilisateur.
+  declare isPlatformAdmin: CreationOptional<boolean>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 
@@ -68,10 +67,10 @@ User.init(
       allowNull: true,
       defaultValue: null,
     },
-    role: {
-      type: DataTypes.ENUM(...USER_ROLES),
+    isPlatformAdmin: {
+      type: DataTypes.BOOLEAN,
       allowNull: false,
-      defaultValue: "employee",
+      defaultValue: false,
     },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,

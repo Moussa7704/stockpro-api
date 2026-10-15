@@ -1,10 +1,15 @@
 // Importer ce fichier enregistre tous les modèles auprès de Sequelize
+import { AuditLog } from "./audit-log.model.js";
+import { Company } from "./company.model.js";
 import { EmailOtpCode } from "./email-otp-code.model.js";
+import { Membership, MembershipShop } from "./membership.model.js";
 import { PasswordToken } from "./password-token.model.js";
 import { RefreshToken } from "./refresh-token.model.js";
+import { Role, RolePermission } from "./role.model.js";
+import { Shop } from "./shop.model.js";
 import { User } from "./user.model.js";
 
-// Associations : supprimer un utilisateur supprime ses sessions, codes OTP et liens de mot de passe
+// --- Authentification : supprimer un utilisateur supprime ses sessions, codes OTP et liens
 User.hasMany(RefreshToken, { foreignKey: "userId", onDelete: "CASCADE" });
 RefreshToken.belongsTo(User, { foreignKey: "userId" });
 
@@ -14,4 +19,36 @@ EmailOtpCode.belongsTo(User, { foreignKey: "userId" });
 User.hasMany(PasswordToken, { foreignKey: "userId", onDelete: "CASCADE" });
 PasswordToken.belongsTo(User, { foreignKey: "userId" });
 
-export { EmailOtpCode, PasswordToken, RefreshToken, User };
+// --- Entreprises (les suppressions sont bloquées en base : on archive ou on suspend)
+Company.hasMany(Shop, { foreignKey: "companyId", as: "shops" });
+Shop.belongsTo(Company, { foreignKey: "companyId", as: "company" });
+
+Company.hasMany(Role, { foreignKey: "companyId", as: "roles" });
+Role.belongsTo(Company, { foreignKey: "companyId", as: "company" });
+Role.hasMany(RolePermission, { foreignKey: "roleId", as: "permissions" });
+
+Company.hasMany(Membership, { foreignKey: "companyId", as: "memberships" });
+Membership.belongsTo(Company, { foreignKey: "companyId", as: "company" });
+User.hasMany(Membership, { foreignKey: "userId", as: "memberships" });
+Membership.belongsTo(User, { foreignKey: "userId", as: "user" });
+Membership.belongsTo(Role, { foreignKey: "roleId", as: "role" });
+Membership.belongsToMany(Shop, {
+  through: MembershipShop,
+  foreignKey: "membershipId",
+  otherKey: "shopId",
+  as: "shops",
+});
+
+export {
+  AuditLog,
+  Company,
+  EmailOtpCode,
+  Membership,
+  MembershipShop,
+  PasswordToken,
+  RefreshToken,
+  Role,
+  RolePermission,
+  Shop,
+  User,
+};
