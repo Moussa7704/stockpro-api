@@ -364,7 +364,7 @@ COMMIT   -- au moindre échec : ROLLBACK complet
 | 2 | Catalogue : unités, catégories, produits, fournisseurs, pagination et recherche | ✅ API livrée |
 | 3 | Stock : niveaux, mouvements, ajustements, inventaires, transferts, alertes | ✅ API livrée |
 | 4 | Achats : commandes, réceptions (CMP), retours, factures et dettes fournisseurs | ✅ API livrée |
-| 5 | Caisse : sessions, ventes, paiements, tickets, idempotence, annulations et retours | |
+| 5 | Caisse : sessions, ventes, paiements, tickets, idempotence, annulations et retours | ✅ API livrée (+ fiches clients et compte client) |
 | 6 | Clients, crédits, remboursements, dépenses | |
 | 7 | Tableau de bord, rapports, exports PDF/Excel | |
 | 8 | Qualité et livraison : sécurité, Docker, CI/CD, documentation, démonstration en ligne | |

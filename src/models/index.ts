@@ -6,6 +6,17 @@ import { EmailOtpCode } from "./email-otp-code.model.js";
 import { Membership, MembershipShop } from "./membership.model.js";
 import { PasswordToken } from "./password-token.model.js";
 import {
+  CashSession,
+  Customer,
+  CustomerLedgerEntry,
+  PaymentMethod,
+  Sale,
+  SaleLine,
+  SalePayment,
+  SaleReturn,
+  SaleReturnLine,
+} from "./pos.models.js";
+import {
   GoodsReceipt,
   GoodsReceiptLine,
   IdempotencyKey,
@@ -85,10 +96,21 @@ SupplierReturnLine.belongsTo(Product, { foreignKey: "productId", as: "product" }
 SupplierInvoice.hasMany(SupplierPayment, { foreignKey: "invoiceId", as: "payments" });
 SupplierInvoice.belongsTo(Supplier, { foreignKey: "supplierId", as: "supplier" });
 
+// --- Caisse
+Sale.hasMany(SaleLine, { foreignKey: "saleId", as: "lines" });
+Sale.hasMany(SalePayment, { foreignKey: "saleId", as: "payments" });
+Sale.belongsTo(Customer, { foreignKey: "customerId", as: "customer" });
+SaleLine.belongsTo(Product, { foreignKey: "productId", as: "product" });
+SalePayment.belongsTo(PaymentMethod, { foreignKey: "paymentMethodId", as: "paymentMethod" });
+SaleReturn.hasMany(SaleReturnLine, { foreignKey: "returnId", as: "lines" });
+
 export {
   AuditLog,
+  CashSession,
   Category,
   Company,
+  Customer,
+  CustomerLedgerEntry,
   EmailOtpCode,
   GoodsReceipt,
   GoodsReceiptLine,
@@ -98,12 +120,18 @@ export {
   Membership,
   MembershipShop,
   PasswordToken,
+  PaymentMethod,
   Product,
   PurchaseOrder,
   PurchaseOrderLine,
   RefreshToken,
   Role,
   RolePermission,
+  Sale,
+  SaleLine,
+  SalePayment,
+  SaleReturn,
+  SaleReturnLine,
   Shop,
   StockAdjustment,
   StockLevel,
