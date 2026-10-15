@@ -107,3 +107,15 @@ export const refreshLimiter = createLimiter({
   limit: 30,
   message: "Trop de renouvellements de session, réessayez plus tard",
 });
+
+/**
+ * Échecs de changement de mot de passe, par utilisateur : empêche de deviner le mot de passe
+ * actuel avec une session volée. À placer APRÈS authenticate, qui remplit req.user.
+ */
+export const changePasswordLimiter = createLimiter({
+  windowMs: 15 * MINUTE,
+  limit: 5,
+  skipSuccessfulRequests: true,
+  message: "Trop de tentatives, réessayez dans 15 minutes",
+  keyGenerator: (req) => (req.user ? `user:${req.user.sub}` : ipKey(req)),
+});

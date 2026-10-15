@@ -1,5 +1,6 @@
 import cookieParser from "cookie-parser";
 import express from "express";
+import helmet from "helmet";
 import { env } from "./config/env.js";
 import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js";
 import { apiLimiter } from "./middlewares/rate-limit.middleware.js";
@@ -12,6 +13,10 @@ export const app = express();
 // partagé par tous les clients. Ne jamais mettre plus que le nombre réel de proxies,
 // sinon un client pourrait falsifier son IP via l'en-tête X-Forwarded-For.
 app.set("trust proxy", env.TRUST_PROXY);
+
+// En-têtes de sécurité HTTP standard (anti-clickjacking, anti "sniffing" de type MIME,
+// HSTS, Content-Security-Policy…) et suppression de X-Powered-By qui révèle "Express"
+app.use(helmet());
 
 app.use(express.json());
 app.use(cookieParser()); // remplit req.cookies (refresh token)

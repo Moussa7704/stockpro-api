@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../../middlewares/auth.middleware.js";
 import {
+  changePasswordLimiter,
   forgotPasswordLimiter,
   loginEmailLimiter,
   loginIpLimiter,
@@ -12,6 +13,7 @@ import {
 import { validateBody } from "../../middlewares/validate.middleware.js";
 import * as authController from "./auth.controller.js";
 import {
+  changePasswordSchema,
   forgotPasswordSchema,
   loginOtpSchema,
   loginSchema,
@@ -68,4 +70,13 @@ authRoutes.post(
   passwordTokenLimiter,
   validateBody(resetPasswordSchema),
   authController.resetPassword,
+);
+
+// Changement de mot de passe par l'utilisateur connecté (ancien mot de passe requis)
+authRoutes.post(
+  "/password/change",
+  authenticate,
+  changePasswordLimiter,
+  validateBody(changePasswordSchema),
+  authController.changePassword,
 );
