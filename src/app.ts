@@ -14,6 +14,7 @@ import {
 } from "./modules/catalog/catalog.routes.js";
 import { companyRoutes } from "./modules/company/company.module.js";
 import { customersRoutes } from "./modules/customers/customers.routes.js";
+import { expensesRoutes } from "./modules/expenses/expenses.routes.js";
 import { membersRoutes } from "./modules/members/members.routes.js";
 import { platformRoutes } from "./modules/platform/platform.routes.js";
 import { paymentMethodsRoutes, posRoutes } from "./modules/pos/pos.routes.js";
@@ -54,6 +55,7 @@ app.use("/api/products", productsRoutes);
 app.use("/api/stock", stockRoutes);
 app.use("/api/purchases", purchasesRoutes);
 app.use("/api/customers", customersRoutes);
+app.use("/api/expenses", expensesRoutes);
 app.use("/api/payment-methods", paymentMethodsRoutes);
 app.use("/api/pos", posRoutes);
 app.use("/api", accessRoutes);

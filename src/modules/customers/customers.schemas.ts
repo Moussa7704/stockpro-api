@@ -40,6 +40,34 @@ export const listCustomersQuerySchema = paginationSchema.extend({
   includeArchived: z.stringbool().default(false),
 });
 
+// --- Règlements de dette
+export const createCustomerPaymentSchema = z.object({
+  shopId: z.uuid(),
+  paymentMethodId: z.uuid(),
+  amount: amountSchema.refine((value) => !/^0+(\.0+)?$/.test(value), "Le montant doit être positif"),
+  reference: optionalText(60),
+  notes: optionalText(2000),
+});
+
+// --- Relevé et impayés
+const dateSchema = z.iso.date("Date invalide (AAAA-MM-JJ)");
+
+export const statementQuerySchema = z
+  .object({ from: dateSchema, to: dateSchema })
+  .refine((value) => value.from <= value.to, { message: "La date de début doit précéder la date de fin", path: ["to"] })
+  .refine((value) => (Date.parse(value.to) - Date.parse(value.from)) / 86_400_000 <= 366, {
+    message: "Période limitée à un an",
+    path: ["from"],
+  });
+
+export const debtorsQuerySchema = paginationSchema.extend({
+  // Ignorer les petites dettes (ex. reliquats de quelques francs)
+  minAmount: amountSchema.optional(),
+});
+
+export type CreateCustomerPaymentInput = z.infer<typeof createCustomerPaymentSchema>;
+export type StatementQuery = z.infer<typeof statementQuerySchema>;
+export type DebtorsQuery = z.infer<typeof debtorsQuerySchema>;
 export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;
 export type UpdateCustomerInput = z.infer<typeof updateCustomerSchema>;
 export type ListCustomersQuery = z.infer<typeof listCustomersQuerySchema>;

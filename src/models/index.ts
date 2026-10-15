@@ -3,6 +3,7 @@ import { AuditLog } from "./audit-log.model.js";
 import { Category, Product, Supplier, Unit } from "./catalog.models.js";
 import { Company } from "./company.model.js";
 import { EmailOtpCode } from "./email-otp-code.model.js";
+import { CustomerPayment, Expense, ExpenseCategory } from "./finance.models.js";
 import { Membership, MembershipShop } from "./membership.model.js";
 import { PasswordToken } from "./password-token.model.js";
 import {
@@ -104,6 +105,11 @@ SaleLine.belongsTo(Product, { foreignKey: "productId", as: "product" });
 SalePayment.belongsTo(PaymentMethod, { foreignKey: "paymentMethodId", as: "paymentMethod" });
 SaleReturn.hasMany(SaleReturnLine, { foreignKey: "returnId", as: "lines" });
 
+// --- Finances
+CustomerPayment.belongsTo(PaymentMethod, { foreignKey: "paymentMethodId", as: "paymentMethod" });
+Expense.belongsTo(ExpenseCategory, { foreignKey: "categoryId", as: "category" });
+Expense.belongsTo(PaymentMethod, { foreignKey: "paymentMethodId", as: "paymentMethod" });
+
 export {
   AuditLog,
   CashSession,
@@ -111,7 +117,10 @@ export {
   Company,
   Customer,
   CustomerLedgerEntry,
+  CustomerPayment,
   EmailOtpCode,
+  Expense,
+  ExpenseCategory,
   GoodsReceipt,
   GoodsReceiptLine,
   IdempotencyKey,
