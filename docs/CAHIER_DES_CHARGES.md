@@ -366,7 +366,7 @@ COMMIT   -- au moindre échec : ROLLBACK complet
 | 4 | Achats : commandes, réceptions (CMP), retours, factures et dettes fournisseurs | ✅ API livrée |
 | 5 | Caisse : sessions, ventes, paiements, tickets, idempotence, annulations et retours | ✅ API livrée (+ fiches clients et compte client) |
 | 6 | Clients, crédits, remboursements, dépenses | ✅ API livrée (règlements de dette, relevé, impayés avec ancienneté, dépenses et caisse) |
-| 7 | Tableau de bord, rapports, exports PDF/Excel | |
+| 7 | Tableau de bord, rapports, exports PDF/Excel | ✅ API livrée (tableau de bord, ventes par période, meilleurs produits, valeur du stock, dépenses, compte de résultat ; exports Excel et PDF) |
 | 8 | Qualité et livraison : sécurité, Docker, CI/CD, documentation, démonstration en ligne | |
 
 Chaque étape : migration(s) → modèles → services (règles métier) → routes → tests (dont isolation)

@@ -1,4 +1,5 @@
 import { Company, Shop, User } from "../../models/index.js";
+import { currencyLabel, formatAmount, formatQuantity } from "../../utils/format.js";
 import type { CompanyAccess } from "../access/access.service.js";
 import { getSale } from "./sales.service.js";
 
@@ -8,17 +9,6 @@ import { getSale } from "./sales.service.js";
  */
 
 const WIDTH = 42;
-
-// "1500.00" → "1 500" (FCFA) sans passer par un nombre flottant
-function formatAmount(value: string, currency: string): string {
-  const [integer = "0", fraction = "00"] = value.split(".");
-  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return currency === "XOF" ? grouped : `${grouped},${fraction}`;
-}
-
-function formatQuantity(value: string): string {
-  return value.replace(/\.?0+$/, "").replace(".", ",");
-}
 
 function leftRight(left: string, right: string): string {
   const space = Math.max(1, WIDTH - left.length - right.length);
@@ -98,7 +88,7 @@ export async function buildTicket(access: CompanyAccess, saleId: string) {
           leftRight("Remises", `-${formatAmount(sale.discountTotal, currency)}`),
         ]
       : []),
-    leftRight(`TOTAL ${currency === "XOF" ? "FCFA" : currency}`, formatAmount(sale.total, currency)),
+    leftRight(`TOTAL ${currencyLabel(currency)}`, formatAmount(sale.total, currency)),
     ...sale.payments.map((payment) => leftRight(payment.paymentMethod.name, formatAmount(payment.amount, currency))),
     ...(Number(sale.changeGiven) > 0 ? [leftRight("Monnaie rendue", formatAmount(sale.changeGiven, currency))] : []),
     ...(Number(sale.balanceDue) > 0 ? [leftRight("Reste dû (crédit)", formatAmount(sale.balanceDue, currency))] : []),
