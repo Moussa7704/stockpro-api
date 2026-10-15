@@ -17,19 +17,25 @@ export class User extends Model<InferAttributes<User>, InferCreationAttributes<U
   declare id: CreationOptional<string>;
   declare name: string;
   declare email: string;
-  declare password: string;
+  // null tant que l'utilisateur invité n'a pas défini son mot de passe
+  declare password: CreationOptional<string | null>;
   declare role: CreationOptional<UserRole>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 
   async comparePassword(plainPassword: string): Promise<boolean> {
+    // Compte invité sans mot de passe : aucune connexion possible
+    if (!this.password) {
+      return false;
+    }
     return bcrypt.compare(plainPassword, this.password);
   }
 
   // Ne jamais renvoyer le hash du mot de passe dans une réponse JSON
   override toJSON() {
-    const { password: _password, ...rest } = this.get();
-    return rest;
+    const { password, ...rest } = this.get();
+    // Indique seulement si l'invitation est encore en attente (mot de passe pas encore défini)
+    return { ...rest, invitationPending: password === null };
   }
 }
 
@@ -56,7 +62,8 @@ User.init(
     },
     password: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
+      defaultValue: null,
     },
     role: {
       type: DataTypes.ENUM(...USER_ROLES),
@@ -72,7 +79,7 @@ User.init(
     hooks: {
       // Appelé avant chaque create() et save() : on ne hash que si le mot de passe a changé
       beforeSave: async (user) => {
-        if (user.changed("password")) {
+        if (user.changed("password") && user.password) {
           user.password = await bcrypt.hash(user.password, SALT_ROUNDS);
         }
       },
