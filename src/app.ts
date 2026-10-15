@@ -19,6 +19,7 @@ import { membersRoutes } from "./modules/members/members.routes.js";
 import { platformRoutes } from "./modules/platform/platform.routes.js";
 import { paymentMethodsRoutes, posRoutes } from "./modules/pos/pos.routes.js";
 import { purchasesRoutes } from "./modules/purchases/purchases.routes.js";
+import { reportsRoutes } from "./modules/reports/reports.routes.js";
 import { shopsRoutes } from "./modules/shops/shops.routes.js";
 import { stockRoutes } from "./modules/stock/stock.routes.js";
 
@@ -58,6 +59,7 @@ app.use("/api/customers", customersRoutes);
 app.use("/api/expenses", expensesRoutes);
 app.use("/api/payment-methods", paymentMethodsRoutes);
 app.use("/api/pos", posRoutes);
+app.use("/api/reports", reportsRoutes);
 app.use("/api", accessRoutes);
 
 // Toujours en dernier : 404 puis gestionnaire d'erreurs

@@ -1,8 +1,8 @@
 import { QueryTypes } from "sequelize";
 import { sequelize } from "../../config/database.js";
-import { Company } from "../../models/index.js";
 import { Decimal } from "../../utils/decimal.js";
 import type { CompanyAccess } from "../access/access.service.js";
+import { companyTimezone, localDayRange } from "../company/company-time.js";
 import type { DebtorsQuery, StatementQuery } from "./customers.schemas.js";
 import { findCustomer } from "./customers.service.js";
 
@@ -10,11 +10,6 @@ import { findCustomer } from "./customers.service.js";
  * Relevé de compte client et suivi des impayés. Les bornes de dates sont des jours du fuseau de
  * l'entreprise (stockage en UTC) : "du 1er au 31" couvre bien ces journées à Dakar ou Abidjan.
  */
-
-async function companyTimezone(companyId: string): Promise<string> {
-  const company = await Company.findByPk(companyId, { attributes: ["timezone"] });
-  return company!.timezone;
-}
 
 interface StatementRow {
   id: string;
@@ -32,8 +27,7 @@ export async function getStatement(access: CompanyAccess, customerId: string, qu
   const timezone = await companyTimezone(access.companyId);
   // [début du jour "from", début du lendemain de "to"[ dans le fuseau de l'entreprise
   const replacements = { companyId: access.companyId, customerId, from: query.from, to: query.to, timezone };
-  const range = `e.created_at >= (CAST(:from AS date)::timestamp AT TIME ZONE :timezone)
-                 AND e.created_at < ((CAST(:to AS date) + 1)::timestamp AT TIME ZONE :timezone)`;
+  const range = localDayRange("e.created_at");
 
   const [opening] = await sequelize.query<{ amount: string }>(
     `SELECT COALESCE(sum(e.amount), 0) AS amount FROM customer_ledger_entries e

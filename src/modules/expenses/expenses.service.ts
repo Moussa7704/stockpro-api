@@ -1,10 +1,11 @@
 import { Op, type Transaction, type WhereOptions } from "sequelize";
 import { sequelize } from "../../config/database.js";
-import { CashSession, Company, Expense, ExpenseCategory, PaymentMethod } from "../../models/index.js";
+import { CashSession, Expense, ExpenseCategory, PaymentMethod } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
 import { Decimal } from "../../utils/decimal.js";
 import type { CompanyAccess } from "../access/access.service.js";
 import { pick, recordAudit, type AuditActor } from "../audit/audit.service.js";
+import { companyTimezone, localDate } from "../company/company-time.js";
 import { archiveAction, archivedAtFrom, rethrowAsConflict } from "../catalog/catalog.helpers.js";
 import { loadActiveMethods } from "../pos/payment-methods.service.js";
 import { assertCurrencyAmount, findUsableSupplier } from "../purchases/purchases.helpers.js";
@@ -105,12 +106,6 @@ export async function updateExpenseCategory(
 }
 
 // --- Dépenses
-async function companyToday(companyId: string, transaction?: Transaction): Promise<string> {
-  const company = await Company.findByPk(companyId, { attributes: ["timezone"], transaction });
-  // en-CA formate en AAAA-MM-JJ
-  return new Intl.DateTimeFormat("en-CA", { timeZone: company!.timezone }).format(new Date());
-}
-
 /** Session de caisse dont le tiroir paie : ouverte, de la boutique ; verrouillée contre une clôture concurrente. */
 async function findDrawerSession(access: CompanyAccess, id: string, shopId: string, transaction: Transaction) {
   const session = await CashSession.findOne({
@@ -155,7 +150,7 @@ export async function createExpense(access: CompanyAccess, input: CreateExpenseI
       cashSessionId = (await findDrawerSession(access, input.cashSessionId, shop.id, transaction)).id;
     }
 
-    const today = await companyToday(access.companyId, transaction);
+    const today = localDate(await companyTimezone(access.companyId, transaction));
     const spentAt = input.spentAt ?? today;
     if (spentAt > today) {
       throw AppError.badRequest("La date de la dépense ne peut pas être dans le futur");
