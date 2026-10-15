@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
+import { Op } from "sequelize";
+import { sequelize } from "../../config/database.js";
 import { env } from "../../config/env.js";
-import { RefreshToken, User } from "../../models/index.js";
+import { PasswordToken, RefreshToken, User } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
 import {
   signAccessToken,
@@ -8,8 +10,9 @@ import {
   verifyLoginChallenge,
   type LoginChallenge,
 } from "../../utils/jwt.js";
-import type { LoginInput, LoginOtpInput } from "./auth.schemas.js";
+import type { ChangePasswordInput, LoginInput, LoginOtpInput } from "./auth.schemas.js";
 import * as otpService from "./otp.service.js";
+import * as passwordService from "./password.service.js";
 
 export interface AuthTokens {
   accessToken: string;
@@ -151,4 +154,49 @@ export async function getMe(userId: string): Promise<User> {
   }
 
   return user;
+}
+
+/**
+ * Changement de mot de passe par un utilisateur connecté.
+ * Les autres appareils sont déconnectés ; la session en cours (currentRefreshToken) est conservée.
+ */
+export async function changePassword(
+  userId: string,
+  input: ChangePasswordInput,
+  currentRefreshToken?: string,
+): Promise<void> {
+  const user = await User.findByPk(userId);
+  if (!user) {
+    throw AppError.unauthorized("Utilisateur introuvable");
+  }
+
+  // 400 et pas 401 : l'utilisateur est bien connecté, un 401 pousserait le client à rafraîchir sa session
+  if (!(await user.comparePassword(input.currentPassword))) {
+    throw AppError.badRequest("Mot de passe actuel incorrect");
+  }
+  if (input.newPassword === input.currentPassword) {
+    throw AppError.badRequest("Le nouveau mot de passe doit être différent de l'actuel");
+  }
+
+  await sequelize.transaction(async (transaction) => {
+    // Le hook beforeSave du modèle hash le mot de passe
+    user.password = input.newPassword;
+    await user.save({ transaction });
+
+    const keepCurrentSession = currentRefreshToken
+      ? { tokenHash: { [Op.ne]: hashToken(currentRefreshToken) } }
+      : {};
+    await RefreshToken.update(
+      { revokedAt: new Date() },
+      { where: { userId, revokedAt: null, ...keepCurrentSession }, transaction },
+    );
+
+    // Un lien "mot de passe oublié" encore valide ne doit pas pouvoir écraser le nouveau mot de passe
+    await PasswordToken.update(
+      { usedAt: new Date() },
+      { where: { userId, usedAt: null }, transaction },
+    );
+  });
+
+  passwordService.notifyPasswordChanged(user);
 }

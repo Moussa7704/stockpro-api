@@ -6,7 +6,11 @@ import { EmailOtpCode, PasswordToken, RefreshToken, User } from "../../models/in
 import type { PasswordTokenPurpose } from "../../models/password-token.model.js";
 import { AppError } from "../../utils/app-error.js";
 import { hmac } from "../../utils/crypto.js";
-import { sendInvitationEmail, sendPasswordResetEmail } from "../../utils/mailer.js";
+import {
+  sendInvitationEmail,
+  sendPasswordChangedEmail,
+  sendPasswordResetEmail,
+} from "../../utils/mailer.js";
 
 /**
  * Liens "définir un mot de passe" envoyés par email.
@@ -29,6 +33,20 @@ function buildLink(token: string): string {
   const url = new URL("/reset-password", env.CLIENT_URL);
   url.searchParams.set("token", token);
   return url.toString();
+}
+
+/**
+ * Alerte "mot de passe modifié" envoyée sans attendre : un échec d'envoi ne doit pas
+ * annuler le changement de mot de passe, il est seulement journalisé.
+ */
+export function notifyPasswordChanged(user: User): void {
+  sendPasswordChangedEmail({
+    to: user.email,
+    name: user.name,
+    resetLink: new URL("/forgot-password", env.CLIENT_URL).toString(),
+  }).catch((error: unknown) => {
+    console.error("Échec de l'envoi de l'alerte de changement de mot de passe :", error);
+  });
 }
 
 /** Crée un lien à usage unique ; les liens précédents encore valides sont annulés. */
@@ -132,7 +150,7 @@ export async function inspectToken(
 export async function setPasswordWithToken(token: string, password: string): Promise<void> {
   const record = await findValidToken(token);
 
-  await sequelize.transaction(async (transaction) => {
+  const user = await sequelize.transaction(async (transaction) => {
     // usedAt: null dans le WHERE : deux envois simultanés du même lien, un seul passe
     const [used] = await PasswordToken.update(
       { usedAt: new Date() },
@@ -161,5 +179,11 @@ export async function setPasswordWithToken(token: string, password: string): Pro
       { consumedAt: new Date() },
       { where: { userId: user.id, consumedAt: null }, transaction },
     );
+    return user;
   });
+
+  // Pas d'alerte pour une invitation : c'est le tout premier mot de passe du compte
+  if (record.purpose === "reset") {
+    notifyPasswordChanged(user);
+  }
 }

@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
+import { env } from "../config/env.js";
 import { AppError } from "../utils/app-error.js";
 
 /**
@@ -29,6 +30,8 @@ function ipKey(req: Request): string {
 
 function createLimiter(options: LimiterOptions) {
   return rateLimit({
+    // Tests automatisés uniquement : jamais à false en dev ni en production
+    skip: () => !env.RATE_LIMIT_ENABLED,
     windowMs: options.windowMs,
     limit: options.limit,
     skipSuccessfulRequests: options.skipSuccessfulRequests ?? false,
@@ -106,4 +109,16 @@ export const refreshLimiter = createLimiter({
   windowMs: 15 * MINUTE,
   limit: 30,
   message: "Trop de renouvellements de session, réessayez plus tard",
+});
+
+/**
+ * Échecs de changement de mot de passe, par utilisateur : empêche de deviner le mot de passe
+ * actuel avec une session volée. À placer APRÈS authenticate, qui remplit req.user.
+ */
+export const changePasswordLimiter = createLimiter({
+  windowMs: 15 * MINUTE,
+  limit: 5,
+  skipSuccessfulRequests: true,
+  message: "Trop de tentatives, réessayez dans 15 minutes",
+  keyGenerator: (req) => (req.user ? `user:${req.user.sub}` : ipKey(req)),
 });

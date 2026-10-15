@@ -149,6 +149,39 @@ export async function sendPasswordResetEmail({
   });
 }
 
+interface PasswordChangedEmail {
+  to: string;
+  name: string;
+  resetLink: string;
+}
+
+/** Alerte de sécurité : si ce n'est pas l'utilisateur, il peut réagir tout de suite. */
+export async function sendPasswordChangedEmail({
+  to,
+  name,
+  resetLink,
+}: PasswordChangedEmail): Promise<void> {
+  await transporter.sendMail({
+    from,
+    to,
+    subject: "Votre mot de passe StockPro a été modifié",
+    text: [
+      `Bonjour ${name},`,
+      "",
+      "Le mot de passe de votre compte StockPro vient d'être modifié.",
+      "Si c'est vous, il n'y a rien à faire.",
+      `Sinon, réinitialisez-le immédiatement : ${resetLink}`,
+    ].join("\n"),
+    html: layout(`
+      <p>Bonjour ${escapeHtml(name)},</p>
+      <p>Le mot de passe de votre compte StockPro vient d'être modifié.</p>
+      <p>Si c'est vous, il n'y a rien à faire.</p>
+      <p><strong>Sinon</strong>, réinitialisez-le immédiatement :</p>
+      ${button(resetLink, "Réinitialiser mon mot de passe")}
+    `),
+  });
+}
+
 /** Vérifie la connexion et l'authentification SMTP (utile pour diagnostiquer la configuration). */
 export async function verifyMailer(): Promise<void> {
   await transporter.verify();

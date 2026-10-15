@@ -1,0 +1,11 @@
+{
+  // Vérification des types du code ET des tests (sans rien générer).
+  // tsconfig.json reste limité à src/ pour le build de production.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src", "tests", "vitest.config.ts"]
+}

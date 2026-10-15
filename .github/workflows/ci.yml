@@ -10,6 +10,22 @@ jobs:
   check:
     runs-on: ubuntu-latest
 
+    # PostgreSQL éphémère pour les tests : créé au début du job, détruit à la fin
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: stockpro_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Récupérer le code
         uses: actions/checkout@v4
@@ -31,6 +47,20 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      # tsc vérifie les types et compile : une erreur TypeScript fait échouer la CI
+      # Types du code et des tests
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # tsc compile : une erreur TypeScript fait échouer la CI
       - name: Build
         run: pnpm build
+
+      # Les autres variables (secrets JWT/OTP, email factice…) sont fixées par tests/test-env.ts
+      - name: Tests
+        run: pnpm test
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          TEST_DB_NAME: stockpro_test

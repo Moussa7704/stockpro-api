@@ -47,5 +47,11 @@ export const resetPasswordSchema = passwordTokenSchema.extend({
   password: newPasswordSchema,
 });
 
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: newPasswordSchema,
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type LoginOtpInput = z.infer<typeof loginOtpSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

@@ -88,3 +88,9 @@ export async function resetPassword(req: Request, res: Response): Promise<void> 
   await passwordService.setPasswordWithToken(req.body.token, req.body.password);
   res.json({ message: "Mot de passe enregistré, vous pouvez vous connecter" });
 }
+
+export async function changePassword(req: Request, res: Response): Promise<void> {
+  // Le refresh token du cookie identifie la session en cours : elle reste ouverte
+  await authService.changePassword(req.user!.sub, req.body, getRefreshCookie(req));
+  res.json({ message: "Mot de passe modifié, vos autres appareils ont été déconnectés" });
+}
