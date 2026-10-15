@@ -15,6 +15,7 @@ import {
 import { companyRoutes } from "./modules/company/company.module.js";
 import { membersRoutes } from "./modules/members/members.routes.js";
 import { platformRoutes } from "./modules/platform/platform.routes.js";
+import { purchasesRoutes } from "./modules/purchases/purchases.routes.js";
 import { shopsRoutes } from "./modules/shops/shops.routes.js";
 import { stockRoutes } from "./modules/stock/stock.routes.js";
 
@@ -49,6 +50,7 @@ app.use("/api/categories", categoriesRoutes);
 app.use("/api/suppliers", suppliersRoutes);
 app.use("/api/products", productsRoutes);
 app.use("/api/stock", stockRoutes);
+app.use("/api/purchases", purchasesRoutes);
 app.use("/api", accessRoutes);
 
 // Toujours en dernier : 404 puis gestionnaire d'erreurs

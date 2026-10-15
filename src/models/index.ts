@@ -5,6 +5,17 @@ import { Company } from "./company.model.js";
 import { EmailOtpCode } from "./email-otp-code.model.js";
 import { Membership, MembershipShop } from "./membership.model.js";
 import { PasswordToken } from "./password-token.model.js";
+import {
+  GoodsReceipt,
+  GoodsReceiptLine,
+  IdempotencyKey,
+  PurchaseOrder,
+  PurchaseOrderLine,
+  SupplierInvoice,
+  SupplierPayment,
+  SupplierReturn,
+  SupplierReturnLine,
+} from "./purchases.models.js";
 import { RefreshToken } from "./refresh-token.model.js";
 import { Role, RolePermission } from "./role.model.js";
 import { Shop } from "./shop.model.js";
@@ -63,17 +74,33 @@ StockTransferLine.belongsTo(Product, { foreignKey: "productId", as: "product" })
 InventoryCount.hasMany(InventoryCountLine, { foreignKey: "inventoryId", as: "lines" });
 InventoryCountLine.belongsTo(Product, { foreignKey: "productId", as: "product" });
 
+// --- Achats
+PurchaseOrder.hasMany(PurchaseOrderLine, { foreignKey: "orderId", as: "lines" });
+PurchaseOrder.belongsTo(Supplier, { foreignKey: "supplierId", as: "supplier" });
+PurchaseOrderLine.belongsTo(Product, { foreignKey: "productId", as: "product" });
+GoodsReceipt.hasMany(GoodsReceiptLine, { foreignKey: "receiptId", as: "lines" });
+GoodsReceiptLine.belongsTo(Product, { foreignKey: "productId", as: "product" });
+SupplierReturn.hasMany(SupplierReturnLine, { foreignKey: "returnId", as: "lines" });
+SupplierReturnLine.belongsTo(Product, { foreignKey: "productId", as: "product" });
+SupplierInvoice.hasMany(SupplierPayment, { foreignKey: "invoiceId", as: "payments" });
+SupplierInvoice.belongsTo(Supplier, { foreignKey: "supplierId", as: "supplier" });
+
 export {
   AuditLog,
   Category,
   Company,
   EmailOtpCode,
+  GoodsReceipt,
+  GoodsReceiptLine,
+  IdempotencyKey,
   InventoryCount,
   InventoryCountLine,
   Membership,
   MembershipShop,
   PasswordToken,
   Product,
+  PurchaseOrder,
+  PurchaseOrderLine,
   RefreshToken,
   Role,
   RolePermission,
@@ -84,6 +111,10 @@ export {
   StockTransfer,
   StockTransferLine,
   Supplier,
+  SupplierInvoice,
+  SupplierPayment,
+  SupplierReturn,
+  SupplierReturnLine,
   Unit,
   User,
 };
