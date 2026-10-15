@@ -31,7 +31,8 @@ assertTestDatabase();
 // Chaque test part de tables vides : aucun test ne dépend d'un autre
 beforeEach(async () => {
   await sequelize.query(
-    `TRUNCATE TABLE audit_logs, membership_shops, memberships, role_permissions, roles, shops,
+    `TRUNCATE TABLE products, categories, units, suppliers,
+       audit_logs, membership_shops, memberships, role_permissions, roles, shops,
        companies, refresh_tokens, email_otp_codes, password_tokens, users RESTART IDENTITY CASCADE;`,
   );
   clearMailbox();

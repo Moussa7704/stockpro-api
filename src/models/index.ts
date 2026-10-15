@@ -1,5 +1,6 @@
 // Importer ce fichier enregistre tous les modèles auprès de Sequelize
 import { AuditLog } from "./audit-log.model.js";
+import { Category, Product, Supplier, Unit } from "./catalog.models.js";
 import { Company } from "./company.model.js";
 import { EmailOtpCode } from "./email-otp-code.model.js";
 import { Membership, MembershipShop } from "./membership.model.js";
@@ -39,16 +40,25 @@ Membership.belongsToMany(Shop, {
   as: "shops",
 });
 
+// --- Catalogue
+Product.belongsTo(Category, { foreignKey: "categoryId", as: "category" });
+Product.belongsTo(Unit, { foreignKey: "unitId", as: "unit" });
+Category.belongsTo(Category, { foreignKey: "parentId", as: "parent" });
+
 export {
   AuditLog,
+  Category,
   Company,
   EmailOtpCode,
   Membership,
   MembershipShop,
   PasswordToken,
+  Product,
   RefreshToken,
   Role,
   RolePermission,
   Shop,
+  Supplier,
+  Unit,
   User,
 };
