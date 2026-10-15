@@ -8,6 +8,15 @@ import { PasswordToken } from "./password-token.model.js";
 import { RefreshToken } from "./refresh-token.model.js";
 import { Role, RolePermission } from "./role.model.js";
 import { Shop } from "./shop.model.js";
+import {
+  InventoryCount,
+  InventoryCountLine,
+  StockAdjustment,
+  StockLevel,
+  StockMovement,
+  StockTransfer,
+  StockTransferLine,
+} from "./stock.models.js";
 import { User } from "./user.model.js";
 
 // --- Authentification : supprimer un utilisateur supprime ses sessions, codes OTP et liens
@@ -45,11 +54,22 @@ Product.belongsTo(Category, { foreignKey: "categoryId", as: "category" });
 Product.belongsTo(Unit, { foreignKey: "unitId", as: "unit" });
 Category.belongsTo(Category, { foreignKey: "parentId", as: "parent" });
 
+// --- Stock
+StockLevel.belongsTo(Product, { foreignKey: "productId", as: "product" });
+StockLevel.belongsTo(Shop, { foreignKey: "shopId", as: "shop" });
+StockMovement.belongsTo(Product, { foreignKey: "productId", as: "product" });
+StockTransfer.hasMany(StockTransferLine, { foreignKey: "transferId", as: "lines" });
+StockTransferLine.belongsTo(Product, { foreignKey: "productId", as: "product" });
+InventoryCount.hasMany(InventoryCountLine, { foreignKey: "inventoryId", as: "lines" });
+InventoryCountLine.belongsTo(Product, { foreignKey: "productId", as: "product" });
+
 export {
   AuditLog,
   Category,
   Company,
   EmailOtpCode,
+  InventoryCount,
+  InventoryCountLine,
   Membership,
   MembershipShop,
   PasswordToken,
@@ -58,6 +78,11 @@ export {
   Role,
   RolePermission,
   Shop,
+  StockAdjustment,
+  StockLevel,
+  StockMovement,
+  StockTransfer,
+  StockTransferLine,
   Supplier,
   Unit,
   User,
