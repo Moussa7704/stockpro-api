@@ -1,0 +1,60 @@
+# StockPro API + PostgreSQL. Les secrets viennent du fichier .env (voir .env.example).
+#   docker compose up -d --build     démarre la base, applique les migrations, lance l'API
+#   docker compose up -d db          base seule (pour développer avec pnpm dev, port 5433)
+
+# Configuration commune à l'API et au service de migration (même image)
+x-api: &api
+  image: stockpro-api
+  env_file: .env
+  environment:
+    NODE_ENV: production
+    PORT: 3000
+    # Dans le réseau Docker, la base s'appelle "db" et écoute sur 5432
+    DB_HOST: db
+    DB_PORT: 5432
+  init: true
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      # 5433 côté machine : le PostgreSQL installé sur Windows occupe déjà 5432
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Applique les migrations en attente puis s'arrête ; l'API ne démarre qu'en cas de succès
+  migrate:
+    <<: *api
+    # Image construite par le service api (une seule construction pour les deux)
+    pull_policy: never
+    command: ["node", "dist/database/cli.js", "up"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *api
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

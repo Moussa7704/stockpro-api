@@ -1,6 +1,7 @@
 import cookieParser from "cookie-parser";
 import express from "express";
 import helmet from "helmet";
+import { sequelize } from "./config/database.js";
 import { env } from "./config/env.js";
 import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js";
 import { apiLimiter } from "./middlewares/rate-limit.middleware.js";
@@ -37,8 +38,14 @@ app.use(helmet());
 app.use(express.json());
 app.use(cookieParser()); // remplit req.cookies (refresh token)
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
+// Sonde de santé (Docker, load balancer) : l'API répond ET la base est joignable
+app.get("/health", async (_req, res) => {
+  try {
+    await sequelize.query("SELECT 1");
+    res.json({ status: "ok", database: "ok" });
+  } catch {
+    res.status(503).json({ status: "error", database: "unreachable" });
+  }
 });
 
 app.use("/api", apiLimiter);
