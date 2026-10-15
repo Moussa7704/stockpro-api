@@ -1,5 +1,4 @@
 import { createHash, randomBytes } from "node:crypto";
-import { UniqueConstraintError } from "sequelize";
 import { env } from "../../config/env.js";
 import { RefreshToken, User } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
@@ -9,7 +8,7 @@ import {
   verifyLoginChallenge,
   type LoginChallenge,
 } from "../../utils/jwt.js";
-import type { LoginInput, LoginOtpInput, RegisterInput } from "./auth.schemas.js";
+import type { LoginInput, LoginOtpInput } from "./auth.schemas.js";
 import * as otpService from "./otp.service.js";
 
 export interface AuthTokens {
@@ -41,19 +40,6 @@ async function createSession(user: User): Promise<AuthTokens> {
 
 async function revokeAllSessions(userId: string): Promise<void> {
   await RefreshToken.update({ revokedAt: new Date() }, { where: { userId, revokedAt: null } });
-}
-
-export async function register(input: RegisterInput): Promise<User> {
-  try {
-    // Le hash du mot de passe est fait par le hook beforeSave du modèle
-    return await User.create(input);
-  } catch (error) {
-    // L'index unique sur email garantit qu'il n'y a pas de doublon, même avec deux requêtes simultanées
-    if (error instanceof UniqueConstraintError) {
-      throw AppError.conflict("Un compte existe déjà avec cet email");
-    }
-    throw error;
-  }
 }
 
 export interface LoginChallengeResult {

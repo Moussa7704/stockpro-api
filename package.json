@@ -14,7 +14,8 @@
     "db:migrate:status": "tsx src/database/cli.ts pending && tsx src/database/cli.ts executed",
     "db:migration:create": "tsx src/database/cli.ts create --name",
     "db:migrate:prod": "node dist/database/cli.js up",
-    "mail:verify": "tsx src/scripts/verify-mailer.ts"
+    "mail:verify": "tsx src/scripts/verify-mailer.ts",
+    "user:create-admin": "tsx src/scripts/create-admin.ts"
   },
   "devEngines": {
     "packageManager": {
