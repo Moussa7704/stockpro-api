@@ -15,6 +15,8 @@ export const DOCUMENT_TYPES = {
   purchaseOrder: "BC",
   goodsReceipt: "REC",
   supplierReturn: "RF",
+  ticket: "T",
+  saleReturn: "RT",
 } as const;
 
 export async function nextDocumentNumber(

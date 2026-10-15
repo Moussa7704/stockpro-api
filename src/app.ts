@@ -13,8 +13,10 @@ import {
   unitsRoutes,
 } from "./modules/catalog/catalog.routes.js";
 import { companyRoutes } from "./modules/company/company.module.js";
+import { customersRoutes } from "./modules/customers/customers.routes.js";
 import { membersRoutes } from "./modules/members/members.routes.js";
 import { platformRoutes } from "./modules/platform/platform.routes.js";
+import { paymentMethodsRoutes, posRoutes } from "./modules/pos/pos.routes.js";
 import { purchasesRoutes } from "./modules/purchases/purchases.routes.js";
 import { shopsRoutes } from "./modules/shops/shops.routes.js";
 import { stockRoutes } from "./modules/stock/stock.routes.js";
@@ -51,6 +53,9 @@ app.use("/api/suppliers", suppliersRoutes);
 app.use("/api/products", productsRoutes);
 app.use("/api/stock", stockRoutes);
 app.use("/api/purchases", purchasesRoutes);
+app.use("/api/customers", customersRoutes);
+app.use("/api/payment-methods", paymentMethodsRoutes);
+app.use("/api/pos", posRoutes);
 app.use("/api", accessRoutes);
 
 // Toujours en dernier : 404 puis gestionnaire d'erreurs
