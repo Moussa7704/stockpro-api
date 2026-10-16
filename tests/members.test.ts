@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AuditLog, Membership, Role, RolePermission } from "../src/models/index.js";
+import { AuditLog, Membership } from "../src/models/index.js";
 import {
   addMember,
   api,
@@ -89,11 +89,11 @@ describe("Invitation d'un membre", () => {
 
   it("est réservée à la permission users.manage", async () => {
     const { company } = await ownerSession();
-    await addMember(company.id, "manager@test.com", "manager", { allShops: true });
-    const manager = await login("manager@test.com");
+    await addMember(company.id, "stock@test.com", "stock_keeper", { allShops: true });
+    const keeper = await login("stock@test.com");
 
-    await api().get("/api/members").set("Authorization", bearer(manager)).expect(403);
-    await invite(manager, { name: "X Y", email: "x@test.com", roleCode: "cashier" }).expect(403);
+    await api().get("/api/members").set("Authorization", bearer(keeper)).expect(403);
+    await invite(keeper, { name: "X Y", email: "x@test.com", roleCode: "cashier" }).expect(403);
   });
 });
 
@@ -117,9 +117,7 @@ describe("Modification d'un membre", () => {
     const cashier = await login("cashier@test.com");
     await api().get("/api/members").set("Authorization", bearer(cashier)).expect(403);
 
-    // On donne users.manage au rôle gérant pour ce test, puis on promeut le caissier
-    const managerRole = await Role.findOne({ where: { companyId: company.id, code: "manager" } });
-    await RolePermission.create({ roleId: managerRole!.id, permission: "users.manage" });
+    // Le gérant a users.manage : promu, le caissier accède à l'équipe sans se reconnecter
     await patchMember(session, membership.id, { roleCode: "manager" }).expect(200);
 
     await api().get("/api/members").set("Authorization", bearer(cashier)).expect(200);
@@ -132,19 +130,23 @@ describe("Modification d'un membre", () => {
     await patchMember(session, own!.id, { status: "disabled" }).expect(400);
   });
 
-  it("garde toujours au moins un propriétaire actif", async () => {
+  it("un gérant ne peut ni rétrograder ni désactiver le propriétaire", async () => {
     const { company } = await ownerSession();
     const ownerMembership = await Membership.findOne({ where: { companyId: company.id } });
-    // Un gérant à qui on a donné users.manage tente de rétrograder l'unique propriétaire
-    const managerRole = await Role.findOne({ where: { companyId: company.id, code: "manager" } });
-    await RolePermission.create({ roleId: managerRole!.id, permission: "users.manage" });
     await addMember(company.id, "manager@test.com", "manager", { allShops: true });
     const manager = await login("manager@test.com");
 
     const response = await patchMember(manager, ownerMembership!.id, { roleCode: "cashier" });
+    expect(response.status).toBe(403);
+    expect(response.body.error.message).toBe("Seul un propriétaire peut attribuer ce rôle ou modifier un propriétaire");
+    await patchMember(manager, ownerMembership!.id, { status: "disabled" }).expect(403);
+  });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error.message).toBe("L'entreprise doit garder au moins un propriétaire actif");
+  it("un propriétaire peut en rétrograder un autre tant qu'il en reste un actif", async () => {
+    const { session, company } = await ownerSession();
+    const { membership: second } = await addMember(company.id, "second-owner@test.com", "owner", { allShops: true });
+
+    await patchMember(session, second.id, { roleCode: "manager" }).expect(200);
   });
 
   it("renvoie l'invitation d'un membre pas encore activé, pas celle d'un compte actif", async () => {

@@ -74,10 +74,23 @@ export const operations: Record<string, OperationDoc> = {
   "GET /api/shops/:id": { summary: "Détail d'une boutique" },
   "POST /api/shops": { summary: "Créer une boutique" },
   "PATCH /api/shops/:id": { summary: "Modifier ou archiver une boutique" },
-  "GET /api/members": { summary: "Membres de l'entreprise, leur rôle et leurs boutiques" },
+  "GET /api/members": {
+    summary: "Membres de l'entreprise : rôle, boutiques, droits effectifs",
+    description: "`editable` indique si l'utilisateur connecté peut modifier ce membre (jamais lui-même, jamais quelqu'un de plus puissant).",
+  },
   "POST /api/members": { summary: "Ajouter un membre (invitation par email si le compte est nouveau)" },
   "PATCH /api/members/:id": { summary: "Changer le rôle, les boutiques ou désactiver un membre" },
   "POST /api/members/:id/invite": { summary: "Renvoyer l'invitation d'un membre" },
+  "GET /api/members/:id/permissions": {
+    summary: "Droits d'un membre : ceux de son rôle, ajouts, retraits, droits effectifs",
+    description: "`grantable` liste les permissions que l'utilisateur connecté peut accorder ou retirer (cases à cocher actives).",
+  },
+  "PUT /api/members/:id/permissions": {
+    summary: "Ajuster les droits d'un membre par rapport à son rôle (ajouts et retraits)",
+    description:
+      "Remplace les ajustements précédents. Ex. un gérant accorde `sales.create` et `cash_sessions.manage` à un gestionnaire de stock. " +
+      "Délégation : on n'accorde ou ne retire que des permissions qu'on possède, à un membre moins puissant que soi, jamais à soi-même.",
+  },
 
   // --- Catalogue
   "GET /api/units": { summary: "Unités de vente (pièce, kg, litre…)", query: includeArchivedQuerySchema },
@@ -248,6 +261,13 @@ export const operations: Record<string, OperationDoc> = {
   },
 
   // --- Rôles et audit
-  "GET /api/roles": { summary: "Rôles de l'entreprise et leurs permissions" },
+  "GET /api/permissions": { summary: "Catalogue des permissions, groupées et libellées (écrans de gestion des droits)" },
+  "GET /api/roles": { summary: "Rôles de l'entreprise, leurs permissions et le nombre de membres" },
+  "POST /api/roles": { summary: "Créer un rôle personnalisé (jamais au-delà de ses propres droits)" },
+  "PATCH /api/roles/:id": {
+    summary: "Modifier un rôle (nom, description, permissions)",
+    description: "S'applique immédiatement à tous les membres qui ont ce rôle. Le rôle de propriétaire n'est pas modifiable.",
+  },
+  "DELETE /api/roles/:id": { summary: "Supprimer un rôle personnalisé que personne n'utilise" },
   "GET /api/audit-logs": { summary: "Journal d'audit (qui a fait quoi, avant/après)", query: auditQuerySchema },
 };

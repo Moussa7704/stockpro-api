@@ -64,6 +64,7 @@ const TABLES = [
   "units",
   "suppliers",
   "audit_logs",
+  "membership_permissions",
   "membership_shops",
   "memberships",
   "role_permissions",

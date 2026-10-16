@@ -38,6 +38,7 @@ export class Membership extends Model<
   declare user?: NonAttribute<User>;
   declare role?: NonAttribute<Role>;
   declare shops?: NonAttribute<Shop[]>;
+  declare permissionOverrides?: NonAttribute<MembershipPermission[]>;
 }
 
 Membership.init(
@@ -77,4 +78,35 @@ MembershipShop.init(
     createdAt: DataTypes.DATE,
   },
   { sequelize, tableName: "membership_shops", updatedAt: false },
+);
+
+export const PERMISSION_EFFECTS = ["grant", "revoke"] as const;
+export type PermissionEffect = (typeof PERMISSION_EFFECTS)[number];
+
+/**
+ * Permission ajoutée (grant) ou retirée (revoke) à un membre, en plus de son rôle.
+ * Droits effectifs = permissions du rôle + ajouts − retraits.
+ */
+export class MembershipPermission extends Model<
+  InferAttributes<MembershipPermission>,
+  InferCreationAttributes<MembershipPermission>
+> {
+  declare membershipId: string;
+  declare permission: string;
+  declare companyId: string;
+  declare effect: PermissionEffect;
+  declare createdBy: CreationOptional<string | null>;
+  declare createdAt: CreationOptional<Date>;
+}
+
+MembershipPermission.init(
+  {
+    membershipId: { type: DataTypes.UUID, primaryKey: true },
+    permission: { type: DataTypes.STRING(64), primaryKey: true },
+    companyId: { type: DataTypes.UUID, allowNull: false },
+    effect: { type: DataTypes.ENUM(...PERMISSION_EFFECTS), allowNull: false },
+    createdBy: { type: DataTypes.UUID, allowNull: true },
+    createdAt: DataTypes.DATE,
+  },
+  { sequelize, tableName: "membership_permissions", updatedAt: false },
 );
