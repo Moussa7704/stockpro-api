@@ -64,3 +64,46 @@ jobs:
           DB_USER: postgres
           DB_PASSWORD: postgres
           TEST_DB_NAME: stockpro_test
+
+  # L'image Docker se construit et la stack complète démarre (base → migrations → API saine).
+  # Un Dockerfile ou un docker-compose.yml cassé est détecté sur la PR, pas le jour du déploiement.
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      # docker-compose.yml lit .env : valeurs factices, aucun secret réel en CI
+      - name: Fichier .env factice
+        run: |
+          cat > .env <<'ENV'
+          DB_NAME=stockpro
+          DB_USER=stockpro
+          DB_PASSWORD=stockpro-ci-password
+          JWT_ACCESS_SECRET=secret-ci-uniquement-pas-pour-la-production-0123456789
+          OTP_SECRET_KEY=0000000000000000000000000000000000000000000000000000000000000000
+          EMAIL_USER=ci@stockpro.test
+          EMAIL_PASS=ci
+          CLIENT_URL=http://localhost:5173
+          ENV
+
+      - name: Construire l'image et démarrer la stack
+        run: docker compose up -d --build --wait --wait-timeout 180
+
+      - name: L'API répond et la base est joignable
+        run: |
+          curl -fsS http://localhost:3000/health
+          # Une route protégée sans token doit répondre 401 (l'API traite vraiment les requêtes)
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/company)" = "401"
+
+      - name: Migrations rejouables sans effet
+        run: docker compose run --rm migrate | grep "applied 0 migrations"
+
+      - name: Logs en cas d'échec
+        if: failure()
+        run: docker compose ps -a && docker compose logs
+
+      - name: Arrêter la stack
+        if: always()
+        run: docker compose down -v

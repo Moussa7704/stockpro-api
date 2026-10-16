@@ -5,24 +5,8 @@ import { sequelize } from "./config/database.js";
 import { env } from "./config/env.js";
 import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js";
 import { apiLimiter } from "./middlewares/rate-limit.middleware.js";
-import { accessRoutes } from "./modules/access/access.routes.js";
-import { authRoutes } from "./modules/auth/auth.routes.js";
-import {
-  categoriesRoutes,
-  productsRoutes,
-  suppliersRoutes,
-  unitsRoutes,
-} from "./modules/catalog/catalog.routes.js";
-import { companyRoutes } from "./modules/company/company.module.js";
-import { customersRoutes } from "./modules/customers/customers.routes.js";
-import { expensesRoutes } from "./modules/expenses/expenses.routes.js";
-import { membersRoutes } from "./modules/members/members.routes.js";
-import { platformRoutes } from "./modules/platform/platform.routes.js";
-import { paymentMethodsRoutes, posRoutes } from "./modules/pos/pos.routes.js";
-import { purchasesRoutes } from "./modules/purchases/purchases.routes.js";
-import { reportsRoutes } from "./modules/reports/reports.routes.js";
-import { shopsRoutes } from "./modules/shops/shops.routes.js";
-import { stockRoutes } from "./modules/stock/stock.routes.js";
+import { createDocsRouter } from "./docs/docs.routes.js";
+import { apiRouters } from "./routes.js";
 
 export const app = express();
 
@@ -49,25 +33,12 @@ app.get("/health", async (_req, res) => {
 });
 
 app.use("/api", apiLimiter);
-app.use("/api/auth", authRoutes);
-// Back-office de l'administrateur SaaS
-app.use("/api/platform", platformRoutes);
-// Entreprise active (company_id du token)
-app.use("/api/company", companyRoutes);
-app.use("/api/shops", shopsRoutes);
-app.use("/api/members", membersRoutes);
-app.use("/api/units", unitsRoutes);
-app.use("/api/categories", categoriesRoutes);
-app.use("/api/suppliers", suppliersRoutes);
-app.use("/api/products", productsRoutes);
-app.use("/api/stock", stockRoutes);
-app.use("/api/purchases", purchasesRoutes);
-app.use("/api/customers", customersRoutes);
-app.use("/api/expenses", expensesRoutes);
-app.use("/api/payment-methods", paymentMethodsRoutes);
-app.use("/api/pos", posRoutes);
-app.use("/api/reports", reportsRoutes);
-app.use("/api", accessRoutes);
+if (env.API_DOCS_ENABLED) {
+  app.use("/api/docs", await createDocsRouter());
+}
+for (const { prefix, router } of apiRouters) {
+  app.use(prefix, router);
+}
 
 // Toujours en dernier : 404 puis gestionnaire d'erreurs
 app.use(notFoundHandler);

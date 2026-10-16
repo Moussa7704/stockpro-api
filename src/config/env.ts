@@ -15,6 +15,8 @@ const envSchema = z.object({
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
   // Désactivé uniquement par les tests automatisés (des centaines de requêtes en quelques secondes)
   RATE_LIMIT_ENABLED: z.stringbool().default(true),
+  // Documentation interactive /api/docs : par défaut active partout sauf en production
+  API_DOCS_ENABLED: z.stringbool().optional(),
   // Adresse du front : sert à construire les liens envoyés par email (invitation, mot de passe oublié)
   CLIENT_URL: z.url().default("http://localhost:5173"),
 
@@ -57,4 +59,7 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const env = parsed.data;
+export const env = {
+  ...parsed.data,
+  API_DOCS_ENABLED: parsed.data.API_DOCS_ENABLED ?? parsed.data.NODE_ENV !== "production",
+};

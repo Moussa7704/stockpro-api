@@ -1,8 +1,7 @@
 import { Router, type Request, type Response } from "express";
-import { z } from "zod";
 import { authenticate, requireCompany, requirePermission } from "../../middlewares/auth.middleware.js";
 import { validateBody, validateParams } from "../../middlewares/validate.middleware.js";
-import { parseQuery, uuidParamsSchema } from "../../utils/query.js";
+import { includeArchivedQuerySchema, parseQuery, uuidParamsSchema } from "../../utils/query.js";
 import { auditActor } from "../audit/audit.service.js";
 import * as schemas from "./catalog.schemas.js";
 import * as categoriesService from "./categories.service.js";
@@ -12,7 +11,6 @@ import * as unitsService from "./units.service.js";
 
 type IdRequest = Request<{ id: string }>;
 
-const includeArchivedQuery = z.object({ includeArchived: z.stringbool().default(false) });
 const byId = validateParams(uuidParamsSchema);
 const canManageProducts = requirePermission("products.manage");
 
@@ -21,7 +19,7 @@ export const unitsRoutes = Router();
 unitsRoutes.use(authenticate, requireCompany);
 
 unitsRoutes.get("/", async (req: Request, res: Response) => {
-  const { includeArchived } = parseQuery(includeArchivedQuery, req.query);
+  const { includeArchived } = parseQuery(includeArchivedQuerySchema, req.query);
   res.json({ units: await unitsService.listUnits(req.company!.companyId, includeArchived) });
 });
 unitsRoutes.post("/", canManageProducts, validateBody(schemas.createUnitSchema), async (req: Request, res: Response) => {
@@ -42,7 +40,7 @@ export const categoriesRoutes = Router();
 categoriesRoutes.use(authenticate, requireCompany);
 
 categoriesRoutes.get("/", async (req: Request, res: Response) => {
-  const { includeArchived } = parseQuery(includeArchivedQuery, req.query);
+  const { includeArchived } = parseQuery(includeArchivedQuerySchema, req.query);
   res.json({ categories: await categoriesService.listCategories(req.company!.companyId, includeArchived) });
 });
 categoriesRoutes.post(

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { RequestHandler } from "express";
 import { UniqueConstraintError } from "sequelize";
+import { withMeta } from "../docs/route-meta.js";
 import { IdempotencyKey } from "../models/index.js";
 import { AppError } from "../utils/app-error.js";
 
@@ -22,7 +23,7 @@ function hashRequest(method: string, path: string, body: unknown): string {
 }
 
 export function idempotent({ required = false } = {}): RequestHandler {
-  return async (req, res, next) => {
+  const handler: RequestHandler = async (req, res, next) => {
     const key = req.header("Idempotency-Key");
     if (!key) {
       if (required) {
@@ -77,4 +78,5 @@ export function idempotent({ required = false } = {}): RequestHandler {
 
     next();
   };
+  return withMeta(handler, { kind: "idempotent", required });
 }

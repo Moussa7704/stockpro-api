@@ -1,4 +1,5 @@
 import type { Request, RequestHandler } from "express";
+import { withMeta } from "../docs/route-meta.js";
 import { User } from "../models/index.js";
 import { loadCompanyAccess, type CompanyAccess } from "../modules/access/access.service.js";
 import type { Permission } from "../modules/access/permissions.js";
@@ -26,6 +27,7 @@ export const authenticate: RequestHandler = (req, _res, next) => {
   req.user = payload;
   next();
 };
+withMeta(authenticate, { kind: "authenticated" });
 
 /** Charge (une fois par requête) les droits de l'utilisateur dans son entreprise active. */
 async function resolveCompanyAccess(req: Request): Promise<CompanyAccess> {
@@ -55,16 +57,18 @@ export const requireCompany: RequestHandler = async (req, _res, next) => {
   await resolveCompanyAccess(req);
   next();
 };
+withMeta(requireCompany, { kind: "company" });
 
 /** Exige TOUTES les permissions listées dans l'entreprise active. À placer APRÈS authenticate. */
 export function requirePermission(...permissions: Permission[]): RequestHandler {
-  return async (req, _res, next) => {
+  const handler: RequestHandler = async (req, _res, next) => {
     const access = await resolveCompanyAccess(req);
     if (!permissions.every((permission) => access.permissions.has(permission))) {
       throw AppError.forbidden("Vous n'avez pas les droits pour cette action");
     }
     next();
   };
+  return withMeta(handler, { kind: "permission", permissions });
 }
 
 /** Back-office de la plateforme : réservé à l'administrateur SaaS (relu en base). */
@@ -79,3 +83,4 @@ export const requirePlatformAdmin: RequestHandler = async (req, _res, next) => {
   }
   next();
 };
+withMeta(requirePlatformAdmin, { kind: "platformAdmin" });

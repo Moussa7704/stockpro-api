@@ -5,7 +5,7 @@ import { paginationSchema, parseQuery } from "../../utils/query.js";
 import { listAuditLogs } from "../audit/audit.service.js";
 import { listRoles } from "./roles.service.js";
 
-const auditQuerySchema = paginationSchema.extend({
+export const auditQuerySchema = paginationSchema.extend({
   action: z.string().trim().max(80).optional(),
   entityType: z.string().trim().max(60).optional(),
 });
