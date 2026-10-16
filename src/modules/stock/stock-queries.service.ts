@@ -6,6 +6,13 @@ import { likePattern } from "../catalog/catalog.helpers.js";
 import { canSeeCosts, visibleShopIds } from "./stock-access.js";
 import type { ListMovementsQuery, ListStockQuery } from "./stock.schemas.js";
 
+/**
+ * Règle unique des alertes de stock (niveaux, filtre « stock bas », alertes, tableau de bord) :
+ * - rupture : plus rien en stock (produit déjà tenu dans la boutique, ou attendu car il a un seuil) ;
+ * - stock bas : quantité inférieure OU ÉGALE au seuil d'alerte (seuil > 0).
+ */
+const ALERT_ON_LEVEL = "((p.alert_threshold > 0 AND sl.quantity <= p.alert_threshold) OR sl.quantity <= 0)";
+
 interface StockRow {
   shop_id: string;
   shop_code: string;
@@ -43,7 +50,7 @@ export async function listStockLevels(access: CompanyAccess, query: ListStockQue
   const conditions = ["sl.company_id = :companyId", "p.status = 'active'"];
   if (shopIds) conditions.push("sl.shop_id IN (:shopIds)");
   if (query.search) conditions.push("(p.name ILIKE :search OR p.sku ILIKE :search OR p.barcode ILIKE :search)");
-  if (query.lowStock) conditions.push("p.alert_threshold > 0 AND sl.quantity <= p.alert_threshold");
+  if (query.lowStock) conditions.push(ALERT_ON_LEVEL);
 
   const from = `FROM stock_levels sl
     JOIN products p ON p.company_id = sl.company_id AND p.id = sl.product_id
@@ -61,7 +68,7 @@ export async function listStockLevels(access: CompanyAccess, query: ListStockQue
   const rows = await sequelize.query<StockRow>(
     `SELECT sl.shop_id, s.code AS shop_code, s.name AS shop_name, sl.product_id, p.sku, p.name, p.barcode,
             u.symbol AS unit_symbol, sl.quantity, p.alert_threshold, sl.average_cost,
-            (p.alert_threshold > 0 AND sl.quantity <= p.alert_threshold) AS low_stock,
+            ${ALERT_ON_LEVEL} AS low_stock,
             ROUND(sl.quantity * sl.average_cost, 2) AS stock_value
      ${from}
      ORDER BY p.name, s.code
@@ -82,9 +89,15 @@ export async function listStockLevels(access: CompanyAccess, query: ListStockQue
   };
 }
 
+export type StockAlertStatus = "out_of_stock" | "low_stock";
+
 /**
- * Alertes : produits actifs avec un seuil, dont le stock est sous le seuil dans une boutique
- * visible — y compris les produits jamais reçus dans cette boutique (stock 0).
+ * Alertes : produits actifs à réapprovisionner dans les boutiques visibles.
+ * - rupture (out_of_stock) : stock à 0 pour un produit déjà tenu dans la boutique, ou jamais reçu
+ *   alors qu'il a un seuil d'alerte (il est attendu dans cette boutique) ;
+ * - stock bas (low_stock) : quantité inférieure ou égale au seuil d'alerte.
+ * Un produit sans seuil et jamais reçu dans une boutique n'y est pas signalé : il n'y est pas vendu.
+ * Ordre : ruptures d'abord, puis les plus proches de zéro par rapport à leur seuil.
  */
 export async function listStockAlerts(access: CompanyAccess, shopId?: string) {
   const shopIds = await visibleShopIds(access, shopId);
@@ -95,29 +108,40 @@ export async function listStockAlerts(access: CompanyAccess, shopId?: string) {
   const rows = await sequelize.query<{
     shop_id: string;
     shop_code: string;
+    shop_name: string;
     product_id: string;
     sku: string;
     name: string;
+    unit: string;
     quantity: string;
     alert_threshold: string;
+    status: StockAlertStatus;
   }>(
-    `SELECT s.id AS shop_id, s.code AS shop_code, p.id AS product_id, p.sku, p.name,
-            COALESCE(sl.quantity, 0) AS quantity, p.alert_threshold
+    `SELECT s.id AS shop_id, s.code AS shop_code, s.name AS shop_name, p.id AS product_id, p.sku, p.name,
+            u.symbol AS unit, COALESCE(sl.quantity, 0) AS quantity, p.alert_threshold,
+            CASE WHEN COALESCE(sl.quantity, 0) <= 0 THEN 'out_of_stock' ELSE 'low_stock' END AS status
      FROM products p
+     JOIN units u ON u.id = p.unit_id
      JOIN shops s ON s.company_id = p.company_id AND s.archived_at IS NULL
      LEFT JOIN stock_levels sl ON sl.shop_id = s.id AND sl.product_id = p.id
-     WHERE p.company_id = :companyId AND p.status = 'active' AND p.alert_threshold > 0
-       AND COALESCE(sl.quantity, 0) <= p.alert_threshold
+     WHERE p.company_id = :companyId AND p.status = 'active'
+       AND (
+         (p.alert_threshold > 0 AND COALESCE(sl.quantity, 0) <= p.alert_threshold)
+         OR (sl.product_id IS NOT NULL AND sl.quantity <= 0)
+       )
        ${shopIds ? "AND s.id IN (:shopIds)" : ""}
-     ORDER BY s.code, p.name`,
+     ORDER BY (COALESCE(sl.quantity, 0) <= 0) DESC,
+              COALESCE(sl.quantity, 0) / NULLIF(p.alert_threshold, 0) ASC NULLS FIRST,
+              p.name, s.code`,
     { replacements: { companyId: access.companyId, shopIds }, type: QueryTypes.SELECT },
   );
 
   return rows.map((row) => ({
-    shop: { id: row.shop_id, code: row.shop_code },
-    product: { id: row.product_id, sku: row.sku, name: row.name },
+    shop: { id: row.shop_id, code: row.shop_code, name: row.shop_name },
+    product: { id: row.product_id, sku: row.sku, name: row.name, unit: row.unit },
     quantity: row.quantity,
     alertThreshold: row.alert_threshold,
+    status: row.status,
   }));
 }
 

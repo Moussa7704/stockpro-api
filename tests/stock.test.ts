@@ -147,15 +147,33 @@ describe("Consultation, coûts et alertes", () => {
 
     const alerts = (await get(session, "/api/stock/alerts").expect(200)).body.alerts;
 
-    // Seuil 5 : 3 en BTQ1, 0 en BTQ2 (jamais reçu) ; le sucre n'a pas de seuil
-    expect(alerts.map((alert: { shop: { code: string }; quantity: string }) => [alert.shop.code, alert.quantity])).toEqual([
-      ["BTQ1", "3.000"],
-      ["BTQ2", "0"],
+    // Seuil 5 : 0 en BTQ2 (jamais reçu, rupture en tête), 3 en BTQ1 ; le sucre n'a pas de seuil
+    expect(
+      alerts.map((alert: { shop: { code: string }; quantity: string; status: string }) => [alert.shop.code, Number(alert.quantity), alert.status]),
+    ).toEqual([
+      ["BTQ2", 0, "out_of_stock"],
+      ["BTQ1", 3, "low_stock"],
     ]);
+    expect(alerts[1]).toMatchObject({ alertThreshold: "5.000", product: { sku: rice.sku, unit: expect.any(String) }, shop: { name: expect.any(String) } });
     expect(alerts.every((alert: { product: { id: string } }) => alert.product.id === rice.id)).toBe(true);
     expect((await get(session, "/api/stock?lowStock=true")).body.total).toBe(1);
     expect((await get(session, `/api/stock/products/${rice.id}`)).body.stock).toHaveLength(2);
     expect(shop2.code).toBe("BTQ2");
+  });
+
+  it("signale la rupture d'un produit sans seuil déjà stocké, pas celle d'un produit jamais reçu", async () => {
+    const { session, shop, sugar } = await setup();
+    await adjust(session, shop.id, [{ productId: sugar.id, quantity: 2, unitCost: 500 }]);
+    await adjust(session, shop.id, [{ productId: sugar.id, quantity: -2 }], "loss");
+
+    const alerts = (await get(session, "/api/stock/alerts").expect(200)).body.alerts;
+    const sugarAlerts = alerts.filter((alert: { product: { id: string } }) => alert.product.id === sugar.id);
+
+    // Rupture en BTQ1 uniquement : jamais reçu en BTQ2, le sucre n'y est pas suivi
+    expect(sugarAlerts).toHaveLength(1);
+    expect(sugarAlerts[0]).toMatchObject({ shop: { code: "BTQ1" }, status: "out_of_stock", alertThreshold: "0.000" });
+    const lowStock = (await get(session, "/api/stock?lowStock=true").expect(200)).body.items;
+    expect(lowStock.some((item: { product: { id: string }; lowStock: boolean }) => item.product.id === sugar.id && item.lowStock)).toBe(true);
   });
 
   it("un gérant limité à une boutique ne voit et n'ajuste que celle-ci", async () => {

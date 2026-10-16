@@ -4,6 +4,7 @@ import { Decimal, roundMoney } from "../../utils/decimal.js";
 import type { CompanyAccess } from "../access/access.service.js";
 import { addDays, companyTimezone, localDate, localDayRange } from "../company/company-time.js";
 import { visibleShopIds } from "../stock/stock-access.js";
+import { listStockAlerts } from "../stock/stock-queries.service.js";
 import type { PeriodQuery, SalesReportQuery, StockValueQuery, TopProductsQuery } from "./reports.schemas.js";
 
 /**
@@ -331,19 +332,19 @@ export async function dashboard(access: CompanyAccess, shopId?: string) {
   const monthStart = `${today.slice(0, 8)}01`;
   const weekStart = addDays(today, -6);
 
-  const [lastDays, month, monthExpenses, top, [stock], [debt], [sessions]] = await Promise.all([
+  const [lastDays, month, monthExpenses, top, [stock], alerts, [debt], [sessions]] = await Promise.all([
     salesRows(scope, addDays(today, -7), today, "day"),
     salesRows(scope, monthStart, today, "month"),
     expenseRows(scope, monthStart, today),
     topProducts(access, { from: monthStart, to: today, shopId, sortBy: "revenue", limit: 5 }),
-    sequelize.query<{ value: string; low_stock: string; out_of_stock: string }>(
-      `SELECT COALESCE(sum(sl.quantity * sl.average_cost), 0) AS value,
-              count(*) FILTER (WHERE p.alert_threshold > 0 AND sl.quantity <= p.alert_threshold) AS low_stock,
-              count(*) FILTER (WHERE sl.quantity = 0 AND p.status = 'active') AS out_of_stock
-       FROM stock_levels sl JOIN products p ON p.id = sl.product_id
+    sequelize.query<{ value: string }>(
+      `SELECT COALESCE(sum(sl.quantity * sl.average_cost), 0) AS value
+       FROM stock_levels sl
        WHERE sl.company_id = :companyId${scope.shop("sl.shop_id")}`,
       { replacements: scope.replacements, type: QueryTypes.SELECT },
     ),
+    // Même règle que la liste des alertes : chaque produit d'une boutique compte une seule fois
+    listStockAlerts(access, shopId),
     // Les clients ne sont pas rattachés à une boutique : encours de toute l'entreprise
     sequelize.query<{ count: string; amount: string }>(
       `SELECT count(*) AS count, COALESCE(sum(balance), 0) AS amount FROM customers
@@ -380,8 +381,8 @@ export async function dashboard(access: CompanyAccess, shopId?: string) {
     topProducts: top.items,
     stock: {
       value: money(stock!.value, scope.currency),
-      lowStockCount: Number(stock!.low_stock),
-      outOfStockCount: Number(stock!.out_of_stock),
+      lowStockCount: alerts.filter((alert) => alert.status === "low_stock").length,
+      outOfStockCount: alerts.filter((alert) => alert.status === "out_of_stock").length,
     },
     customers: { debtorsCount: Number(debt!.count), totalDebt: money(debt!.amount, scope.currency) },
     openCashSessions: Number(sessions!.count),
