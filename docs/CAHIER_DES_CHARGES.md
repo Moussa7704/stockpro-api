@@ -102,6 +102,7 @@ qui lui sont attribuées. `owner` et `accountant` voient toutes les boutiques pa
 | D-04 | **Les commerçants sont créés par l'administrateur SaaS** | Pas d'inscription publique. Back-office plateforme : création de l'entreprise + invitation du propriétaire par email. |
 | D-05 | **Valorisation du stock au coût moyen pondéré (CMP)**, par boutique | Recalculé à chaque réception ; le coût est figé sur chaque mouvement et chaque ligne de vente (marge exacte). |
 | D-06 | Dates stockées en **UTC**, rapports dans le **fuseau de l'entreprise** | `companies.timezone` (ex. `Africa/Abidjan`). |
+| D-07 | **Droits délégables** : rôles personnalisés + ajustements par membre (ajout ou retrait d'une permission) | Droits effectifs = rôle + ajouts − retraits. Le gérant gère son équipe (`users.manage`), le propriétaire les rôles (`roles.manage`). Délégation bornée : on n'accorde que ce qu'on possède, à un membre moins puissant, sur ses propres boutiques, jamais à soi-même ; le propriétaire garde tout. Tout est audité. |
 
 ---
 

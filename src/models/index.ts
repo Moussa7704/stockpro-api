@@ -4,7 +4,7 @@ import { Category, Product, Supplier, Unit } from "./catalog.models.js";
 import { Company } from "./company.model.js";
 import { EmailOtpCode } from "./email-otp-code.model.js";
 import { CustomerPayment, Expense, ExpenseCategory } from "./finance.models.js";
-import { Membership, MembershipShop } from "./membership.model.js";
+import { Membership, MembershipPermission, MembershipShop } from "./membership.model.js";
 import { PasswordToken } from "./password-token.model.js";
 import {
   CashSession,
@@ -65,6 +65,8 @@ Membership.belongsTo(Company, { foreignKey: "companyId", as: "company" });
 User.hasMany(Membership, { foreignKey: "userId", as: "memberships" });
 Membership.belongsTo(User, { foreignKey: "userId", as: "user" });
 Membership.belongsTo(Role, { foreignKey: "roleId", as: "role" });
+Membership.hasMany(MembershipPermission, { foreignKey: "membershipId", as: "permissionOverrides" });
+Role.hasMany(Membership, { foreignKey: "roleId", as: "memberships" });
 Membership.belongsToMany(Shop, {
   through: MembershipShop,
   foreignKey: "membershipId",
@@ -127,6 +129,7 @@ export {
   InventoryCount,
   InventoryCountLine,
   Membership,
+  MembershipPermission,
   MembershipShop,
   PasswordToken,
   PaymentMethod,

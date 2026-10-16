@@ -1,5 +1,6 @@
 import type { Transaction } from "sequelize";
-import { Company, Membership, Role, RolePermission, Shop } from "../../models/index.js";
+import { Company, Membership, MembershipPermission, Role, RolePermission, Shop } from "../../models/index.js";
+import { effectivePermissions } from "./delegation.js";
 import type { Permission } from "./permissions.js";
 
 /**
@@ -55,6 +56,7 @@ export async function loadCompanyAccess(
         through: { attributes: [] },
         required: false,
       },
+      { model: MembershipPermission, as: "permissionOverrides", attributes: ["permission", "effect"] },
     ],
     transaction,
   });
@@ -70,8 +72,11 @@ export async function loadCompanyAccess(
     membershipId: membership.id,
     roleCode: membership.role.code,
     roleName: membership.role.name,
-    permissions: new Set(
-      (membership.role.permissions ?? []).map((item) => item.permission as Permission),
+    // Rôle + permissions ajoutées − permissions retirées à ce membre
+    permissions: effectivePermissions(
+      membership.role.code,
+      (membership.role.permissions ?? []).map((item) => item.permission),
+      membership.permissionOverrides ?? [],
     ),
     allShops: membership.allShops,
     shopIds: (membership.shops ?? []).map((shop) => shop.id),
