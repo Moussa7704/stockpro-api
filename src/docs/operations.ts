@@ -115,7 +115,7 @@ export const operations: Record<string, OperationDoc> = {
   // --- Stock
   "GET /api/stock": { summary: "Niveaux de stock par boutique et produit", query: stock.listStockQuerySchema },
   "GET /api/stock/alerts": {
-    summary: "Produits sous leur seuil d'alerte",
+    summary: "Produits à réapprovisionner : ruptures (en tête) et stock au niveau ou sous le seuil d'alerte",
     query: z.object({ shopId: z.uuid().optional() }),
   },
   "GET /api/stock/movements": { summary: "Journal des mouvements de stock", query: stock.listMovementsQuerySchema },
