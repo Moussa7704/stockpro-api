@@ -1,2 +1,4 @@
 allowBuilds:
   esbuild: true
+  # Télémétrie de téléchargement embarquée par swagger-ui-dist : refusée explicitement
+  "@scarf/scarf": false

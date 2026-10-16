@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import { z } from "zod";
+import { withMeta } from "../docs/route-meta.js";
 import { AppError } from "../utils/app-error.js";
 
 // Messages d'erreur de zod en français
@@ -18,7 +19,7 @@ function toDetails(error: z.ZodError) {
  * (espaces retirés, email en minuscules, champs inconnus supprimés).
  */
 export function validateBody(schema: z.ZodType): RequestHandler {
-  return (req, _res, next) => {
+  const handler: RequestHandler = (req, _res, next) => {
     const result = schema.safeParse(req.body);
 
     if (!result.success) {
@@ -28,11 +29,12 @@ export function validateBody(schema: z.ZodType): RequestHandler {
     req.body = result.data;
     next();
   };
+  return withMeta(handler, { kind: "body", schema });
 }
 
 /** Valide les paramètres d'URL (ex. :id doit être un UUID) : 400 au lieu d'une erreur SQL. */
 export function validateParams(schema: z.ZodType): RequestHandler {
-  return (req, _res, next) => {
+  const handler: RequestHandler = (req, _res, next) => {
     const result = schema.safeParse(req.params);
 
     if (!result.success) {
@@ -40,4 +42,5 @@ export function validateParams(schema: z.ZodType): RequestHandler {
     }
     next();
   };
+  return withMeta(handler, { kind: "params", schema });
 }

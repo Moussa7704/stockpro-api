@@ -23,6 +23,9 @@ export const paginationSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+/** ?includeArchived=true : inclure les éléments archivés dans une liste. */
+export const includeArchivedQuerySchema = z.object({ includeArchived: z.stringbool().default(false) });
+
 export const uuidParamsSchema = z.object({
   id: z.uuid("Identifiant invalide"),
 });

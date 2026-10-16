@@ -1,9 +1,8 @@
 import { Router, type Request, type Response } from "express";
-import { z } from "zod";
 import { authenticate, requirePermission } from "../../middlewares/auth.middleware.js";
 import { idempotent } from "../../middlewares/idempotency.middleware.js";
 import { validateBody, validateParams } from "../../middlewares/validate.middleware.js";
-import { parseQuery, uuidParamsSchema } from "../../utils/query.js";
+import { includeArchivedQuerySchema, parseQuery, uuidParamsSchema } from "../../utils/query.js";
 import { auditActor } from "../audit/audit.service.js";
 import * as schemas from "./expenses.schemas.js";
 import * as expenses from "./expenses.service.js";
@@ -17,7 +16,7 @@ expensesRoutes.use(authenticate, requirePermission("expenses.manage"));
 
 // Catégories
 expensesRoutes.get("/categories", async (req: Request, res: Response) => {
-  const { includeArchived } = parseQuery(z.object({ includeArchived: z.stringbool().default(false) }), req.query);
+  const { includeArchived } = parseQuery(includeArchivedQuerySchema, req.query);
   res.json({ categories: await expenses.listExpenseCategories(req.company!.companyId, includeArchived) });
 });
 expensesRoutes.post("/categories", validateBody(schemas.createExpenseCategorySchema), async (req: Request, res: Response) => {
