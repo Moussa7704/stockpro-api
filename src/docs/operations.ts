@@ -69,7 +69,12 @@ export const operations: Record<string, OperationDoc> = {
 
   // --- Entreprise, boutiques, membres
   "GET /api/company": { summary: "Entreprise active (nom, devise, fuseau, réglages)" },
-  "PATCH /api/company": { summary: "Modifier l'entreprise active (nom, fuseau, réglages de caisse)" },
+  "PATCH /api/company": {
+    summary: "Modifier l'entreprise active (nom, fuseau, réglages de caisse, couleur de l'interface)",
+    description:
+      "`settings.brandColor` : couleur principale de l'interface au format #RRGGBB, refusée si le texte blanc " +
+      "des boutons y est illisible (contraste < 4,5:1) ; null revient à la couleur StockPro. Renvoyée par /api/auth/me.",
+  },
   "GET /api/shops": { summary: "Boutiques visibles par l'utilisateur", query: listShopsQuerySchema },
   "GET /api/shops/:id": { summary: "Détail d'une boutique" },
   "POST /api/shops": { summary: "Créer une boutique" },

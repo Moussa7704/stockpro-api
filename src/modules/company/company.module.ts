@@ -5,6 +5,7 @@ import { authenticate, requireCompany, requirePermission } from "../../middlewar
 import { validateBody } from "../../middlewares/validate.middleware.js";
 import { Company } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
+import { contrastRatio, MIN_TEXT_CONTRAST } from "../../utils/color.js";
 import { auditActor, pick, recordAudit } from "../audit/audit.service.js";
 import { timezoneSchema } from "../platform/platform.schemas.js";
 
@@ -12,6 +13,16 @@ import { timezoneSchema } from "../platform/platform.schemas.js";
  * Paramètres de l'entreprise active (côté commerçant).
  * La devise n'est pas modifiable (D-01) ; le statut ne se change que depuis la plateforme.
  */
+
+// Couleur de l'interface : le texte blanc des boutons doit rester lisible dessus (contraste AA)
+export const brandColorSchema = z
+  .string()
+  .trim()
+  .regex(/^#[0-9a-f]{6}$/i, "Couleur invalide : format #RRGGBB attendu")
+  .transform((value) => value.toLowerCase())
+  .refine((value) => contrastRatio(value, "#ffffff") >= MIN_TEXT_CONTRAST, {
+    message: "Couleur trop claire : le texte blanc des boutons serait illisible. Choisissez une teinte plus foncée.",
+  });
 
 const updateCompanySettingsSchema = z
   .object({
@@ -21,6 +32,8 @@ const updateCompanySettingsSchema = z
       .object({
         // Remise maximale qu'un caissier peut accorder sans permission sales.discount (RB-10)
         maxCashierDiscountPercent: z.number().min(0).max(100).optional(),
+        // null : retour à la couleur StockPro
+        brandColor: brandColorSchema.nullable().optional(),
       })
       .optional(),
   })
