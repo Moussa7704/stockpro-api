@@ -2,6 +2,7 @@ import type { Request } from "express";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import { env } from "../config/env.js";
 import { AppError } from "../utils/app-error.js";
+import { verifyAccessToken } from "../utils/jwt.js";
 
 /**
  * Limitation du nombre de requêtes (rate limiting) : freine la force brute
@@ -15,7 +16,7 @@ const MINUTE = 60 * 1000;
 
 interface LimiterOptions {
   windowMs: number;
-  limit: number;
+  limit: number | ((req: Request) => number);
   message: string;
   // true : seules les réponses en erreur (>= 400) comptent, un utilisateur légitime n'est pas pénalisé
   skipSuccessfulRequests?: boolean;
@@ -44,11 +45,39 @@ function createLimiter(options: LimiterOptions) {
   });
 }
 
-/** Filet de sécurité sur toute l'API, par IP. */
+// Clé calculée une fois par requête (elle sert à la clé et au plafond)
+const clientKeys = new WeakMap<Request, string>();
+
+/**
+ * Qui consomme le quota général : l'utilisateur d'un jeton d'accès valide, sinon l'adresse IP.
+ * Par IP seulement, tous les employés d'une boutique (même box Internet) se partageraient un
+ * seul quota et seraient bloqués, puis déconnectés, en pleine journée.
+ */
+export function apiClientKey(req: Request): string {
+  let key = clientKeys.get(req);
+  if (key) return key;
+  key = ipKey(req);
+  const header = req.headers.authorization;
+  if (header?.startsWith("Bearer ")) {
+    try {
+      key = `user:${verifyAccessToken(header.slice("Bearer ".length)).sub}`;
+    } catch {
+      // Jeton expiré ou falsifié : compté avec l'adresse IP
+    }
+  }
+  clientKeys.set(req, key);
+  return key;
+}
+
+/** Plafonds du quota général sur 15 minutes. */
+export const API_LIMITS = { user: 1000, ip: 300 } as const;
+
+/** Filet de sécurité sur toute l'API : par utilisateur connecté, sinon par IP. */
 export const apiLimiter = createLimiter({
   windowMs: 15 * MINUTE,
-  limit: 300,
+  limit: (req) => (apiClientKey(req).startsWith("user:") ? API_LIMITS.user : API_LIMITS.ip),
   message: "Trop de requêtes, réessayez dans quelques minutes",
+  keyGenerator: apiClientKey,
 });
 
 /** Demandes "mot de passe oublié", par IP (chaque demande peut envoyer un email). */
@@ -104,10 +133,14 @@ export const otpResendLimiter = createLimiter({
   message: "Trop de demandes de renvoi, réessayez plus tard",
 });
 
-/** Renouvellement de session, par IP. */
+/**
+ * Échecs de renouvellement de session, par IP. Les réussites ne comptent pas : un refresh token
+ * (256 bits aléatoires) ne se devine pas, et plusieurs appareils d'une boutique partagent l'IP.
+ */
 export const refreshLimiter = createLimiter({
   windowMs: 15 * MINUTE,
   limit: 30,
+  skipSuccessfulRequests: true,
   message: "Trop de renouvellements de session, réessayez plus tard",
 });
 
