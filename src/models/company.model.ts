@@ -13,6 +13,8 @@ export type CompanyStatus = (typeof COMPANY_STATUSES)[number];
 /** Paramètres libres de l'entreprise (ex. plafond de remise des caissiers). */
 export interface CompanySettings {
   maxCashierDiscountPercent?: number;
+  /** Couleur principale de l'interface (#rrggbb, lisible sous du texte blanc) ; absente : couleur StockPro */
+  brandColor?: string | null;
 }
 
 /** Commerçant abonné (tenant) : toutes les données métier lui sont rattachées par company_id. */

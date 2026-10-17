@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { Op } from "sequelize";
 import { sequelize } from "../../config/database.js";
 import { env } from "../../config/env.js";
-import { PasswordToken, RefreshToken, User } from "../../models/index.js";
+import { Company, PasswordToken, RefreshToken, User } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
 import {
   signAccessToken,
@@ -203,6 +203,8 @@ export interface MeResult {
     permissions: string[];
     allShops: boolean;
     shopIds: string[];
+    /** Couleur de l'interface choisie par l'entreprise (null : couleur StockPro) */
+    brandColor: string | null;
   } | null;
 }
 
@@ -216,6 +218,7 @@ export async function getMe(userId: string, companyId: string | null): Promise<M
 
   const companies = await listUserCompanies(userId);
   const access = companyId ? await loadCompanyAccess(userId, companyId) : null;
+  const company = access && (await Company.findByPk(access.companyId, { attributes: ["settings"] }));
 
   return {
     user,
@@ -227,6 +230,7 @@ export async function getMe(userId: string, companyId: string | null): Promise<M
       permissions: [...access.permissions].sort(),
       allShops: access.allShops,
       shopIds: access.shopIds,
+      brandColor: company?.settings.brandColor ?? null,
     },
   };
 }
