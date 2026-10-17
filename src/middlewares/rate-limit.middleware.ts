@@ -78,7 +78,7 @@ export const apiLimiter = createLimiter({
   limit: (req) => (apiClientKey(req).startsWith("user:") ? API_LIMITS.user : API_LIMITS.ip),
   message: "Trop de requêtes, réessayez dans quelques minutes",
   keyGenerator: apiClientKey,
-});
+}); 
 
 /** Demandes "mot de passe oublié", par IP (chaque demande peut envoyer un email). */
 export const forgotPasswordLimiter = createLimiter({
