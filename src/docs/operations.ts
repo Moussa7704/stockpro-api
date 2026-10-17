@@ -64,7 +64,11 @@ export const operations: Record<string, OperationDoc> = {
     summary: "Créer un commerçant",
     description: "Crée l'entreprise, ses rôles, unités, moyens de paiement, catégories de dépenses, une première boutique et invite le propriétaire.",
   },
-  "GET /api/platform/companies/:id": { summary: "Détail d'un commerçant" },
+  "GET /api/platform/companies/:id": { summary: "Détail d'un commerçant : boutiques, membres, propriétaire et état de son invitation" },
+  "POST /api/platform/companies/:id/owner/invitation": {
+    summary: "Renvoyer l'invitation du propriétaire (compte pas encore activé)",
+    description: "Nouveau lien par email, l'ancien ne sert plus. 409 si le compte est déjà activé ou le commerçant suspendu.",
+  },
   "PATCH /api/platform/companies/:id": { summary: "Modifier ou suspendre un commerçant" },
 
   // --- Entreprise, boutiques, membres

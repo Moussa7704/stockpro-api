@@ -151,3 +151,63 @@ describe("Suspension d'un commerçant", () => {
     expect(await Shop.count()).toBe(1);
   });
 });
+
+describe("Fiche d'un commerçant et invitation du propriétaire", () => {
+  const detail = async (admin: Session, id: string) =>
+    (await api().get(`/api/platform/companies/${id}`).set("Authorization", bearer(admin)).expect(200)).body.company;
+  const resend = (admin: Session, id: string) =>
+    api().post(`/api/platform/companies/${id}/owner/invitation`).set("Authorization", bearer(admin));
+
+  it("montre le propriétaire, son invitation en attente et les membres, sans mot de passe", async () => {
+    const admin = await loginAsPlatformAdmin();
+    const { company } = (await createCompanyRequest(admin)).body;
+
+    const fiche = await detail(admin, company.id);
+
+    expect(fiche.owner).toEqual({ id: expect.any(String), name: "Awa Diallo", email: "awa@test.com", invitationPending: true });
+    expect(fiche.members).toEqual([
+      expect.objectContaining({ status: "active", role: { code: "owner", name: expect.any(String) }, user: fiche.owner }),
+    ]);
+    expect(fiche.shops).toHaveLength(1);
+    expect(JSON.stringify(fiche)).not.toContain("password");
+  });
+
+  it("renvoie l'invitation : nouveau lien, l'ancien ne sert plus, action tracée", async () => {
+    const admin = await loginAsPlatformAdmin();
+    const { company } = (await createCompanyRequest(admin)).body;
+    const firstToken = lastLinkToken("invitation", "awa@test.com");
+
+    const response = await resend(admin, company.id).expect(200);
+
+    expect(response.body).toEqual({ sentTo: "awa@test.com" });
+    expect(emailsTo("awa@test.com").map((email) => email.type)).toEqual(["invitation", "invitation"]);
+    const secondToken = lastLinkToken("invitation", "awa@test.com");
+    expect(secondToken).not.toBe(firstToken);
+    await api().post("/api/auth/password/check").send({ token: firstToken }).expect((res) => expect(res.status).toBeGreaterThanOrEqual(400));
+    await api().post("/api/auth/password/check").send({ token: secondToken }).expect(200);
+    expect(await AuditLog.count({ where: { companyId: company.id, action: "company.owner_invite" } })).toBe(1);
+  });
+
+  it("refuse si le propriétaire a déjà activé son compte, ou si le commerçant est suspendu", async () => {
+    const admin = await loginAsPlatformAdmin();
+    const { company } = await createCompany("Commerce A", "owner-a@test.com");
+    const activated = await resend(admin, company.id).expect(409);
+    expect(activated.body.error.message).toBe("Le propriétaire a déjà activé son compte");
+    expect((await detail(admin, company.id)).owner).toMatchObject({ email: "owner-a@test.com", invitationPending: false });
+
+    const { company: pending } = (await createCompanyRequest(admin)).body;
+    await api().patch(`/api/platform/companies/${pending.id}`).set("Authorization", bearer(admin)).send({ status: "suspended" }).expect(200);
+    const suspended = await resend(admin, pending.id).expect(409);
+    expect(suspended.body.error.message).toMatch(/^Commerçant suspendu/);
+  });
+
+  it("réservé à l'administrateur de la plateforme ; commerçant inconnu → 404", async () => {
+    const admin = await loginAsPlatformAdmin();
+    const { company } = await createCompany("Commerce A", "owner-a@test.com");
+    const owner = await login("owner-a@test.com");
+
+    await resend(owner, company.id).expect(403);
+    await api().get(`/api/platform/companies/${company.id}`).set("Authorization", bearer(owner)).expect(403);
+    await resend(admin, "00000000-0000-4000-8000-000000000000").expect(404);
+  });
+});

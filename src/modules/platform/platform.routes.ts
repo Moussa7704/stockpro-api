@@ -13,6 +13,11 @@ platformRoutes.use(authenticate, requirePlatformAdmin);
 platformRoutes.get("/companies", platformController.listCompanies);
 platformRoutes.post("/companies", validateBody(createCompanySchema), platformController.createCompany);
 platformRoutes.get("/companies/:id", validateParams(uuidParamsSchema), platformController.getCompany);
+platformRoutes.post(
+  "/companies/:id/owner/invitation",
+  validateParams(uuidParamsSchema),
+  platformController.resendOwnerInvitation,
+);
 platformRoutes.patch(
   "/companies/:id",
   validateParams(uuidParamsSchema),
