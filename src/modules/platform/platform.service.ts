@@ -1,6 +1,6 @@
 import { Op, UniqueConstraintError, type Transaction } from "sequelize";
 import { sequelize } from "../../config/database.js";
-import { Company, Membership, Shop, User } from "../../models/index.js";
+import { Company, Membership, Role, Shop, User } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
 import { createSystemRoles } from "../access/roles.service.js";
 import { pick, recordAudit, type AuditActor } from "../audit/audit.service.js";
@@ -56,6 +56,34 @@ export async function listCompanies() {
   }));
 }
 
+type MemberRow = Membership & { user: User; role: Role };
+
+/** Membres d'un commerçant, du plus ancien au plus récent ; jamais le hash du mot de passe. */
+async function companyMembers(companyId: string, transaction?: Transaction) {
+  const memberships = (await Membership.findAll({
+    where: { companyId },
+    include: [
+      { model: User, as: "user", attributes: ["id", "name", "email", "password"] },
+      { model: Role, as: "role", attributes: ["code", "name"] },
+    ],
+    order: [["createdAt", "ASC"]],
+    transaction,
+  })) as MemberRow[];
+  return memberships.map((membership) => ({
+    membershipId: membership.id,
+    status: membership.status,
+    role: { code: membership.role.code, name: membership.role.name },
+    user: {
+      id: membership.user.id,
+      name: membership.user.name,
+      email: membership.user.email,
+      // Compte pas encore activé : le mot de passe n'a jamais été choisi
+      invitationPending: membership.user.password === null,
+    },
+  }));
+}
+
+/** Fiche d'un commerçant : boutiques, membres et propriétaire (le premier propriétaire actif). */
 export async function getCompany(id: string) {
   const company = await Company.findByPk(id, {
     include: [{ model: Shop, as: "shops", attributes: ["id", "name", "code", "archivedAt"] }],
@@ -63,7 +91,48 @@ export async function getCompany(id: string) {
   if (!company) {
     throw AppError.notFound("Entreprise introuvable");
   }
-  return company;
+  const members = await companyMembers(id);
+  const owner = members.find((member) => member.role.code === "owner" && member.status === "active");
+  return { ...company.toJSON(), members, owner: owner?.user ?? null };
+}
+
+/**
+ * Renvoie l'invitation du propriétaire qui n'a pas encore choisi son mot de passe (email perdu,
+ * lien expiré). Un nouveau lien remplace l'ancien.
+ */
+export async function resendOwnerInvitation(id: string, actor: AuditActor) {
+  const company = await Company.findByPk(id);
+  if (!company) {
+    throw AppError.notFound("Entreprise introuvable");
+  }
+  if (company.status !== "active") {
+    throw AppError.conflict("Commerçant suspendu : réactivez-le avant de renvoyer l'invitation");
+  }
+  const owner = (await companyMembers(id)).find((member) => member.role.code === "owner" && member.status === "active");
+  if (!owner) {
+    throw AppError.notFound("Ce commerçant n'a pas de propriétaire actif");
+  }
+  if (!owner.user.invitationPending) {
+    throw AppError.conflict("Le propriétaire a déjà activé son compte");
+  }
+
+  const user = (await User.findByPk(owner.user.id))!;
+  await sequelize.transaction(async (transaction) => {
+    await recordAudit(
+      {
+        ...actor,
+        companyId: company.id,
+        action: "company.owner_invite",
+        entityType: "company",
+        entityId: company.id,
+        after: { owner: user.email },
+      },
+      transaction,
+    );
+    // Dans la transaction : si l'email ne part pas, ni lien ni trace d'audit
+    await passwordService.sendInvitation(user, { invitedBy: "StockPro", companyName: company.name }, transaction);
+  });
+  return { sentTo: user.email };
 }
 
 /**

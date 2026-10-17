@@ -17,6 +17,10 @@ export async function createCompany(req: Request, res: Response): Promise<void> 
   res.status(201).json({ company, shop, owner });
 }
 
+export async function resendOwnerInvitation(req: Request<{ id: string }>, res: Response): Promise<void> {
+  res.json(await platformService.resendOwnerInvitation(req.params.id, auditActor(req)));
+}
+
 export async function updateCompany(req: Request<{ id: string }>, res: Response): Promise<void> {
   const company = await platformService.updateCompany(req.params.id, req.body, auditActor(req));
   res.json({ company });
