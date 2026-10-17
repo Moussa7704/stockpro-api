@@ -22,7 +22,19 @@ function checkedPeriod<T extends z.ZodType<{ from: string; to: string }>>(schema
     });
 }
 
-export const dashboardQuerySchema = z.object({ shopId: z.uuid().optional() });
+// Tableau de bord : période facultative (une date : from = to ; un mois : du 1er au dernier jour).
+// Sans période : le mois en cours jusqu'à aujourd'hui. La date de fin dans le futur est refusée par le service.
+export const dashboardQuerySchema = z
+  .object({ shopId: z.uuid().optional(), from: dateSchema.optional(), to: dateSchema.optional() })
+  .refine((value) => (value.from === undefined) === (value.to === undefined), {
+    message: "Indiquer la date de début et la date de fin",
+    path: ["from"],
+  })
+  .refine((value) => !value.from || !value.to || value.from <= value.to, { message: "La date de début doit précéder la date de fin", path: ["to"] })
+  .refine((value) => !value.from || !value.to || (Date.parse(value.to) - Date.parse(value.from)) / 86_400_000 <= 731, {
+    message: "Période limitée à deux ans",
+    path: ["from"],
+  });
 
 export const periodQuerySchema = checkedPeriod(z.object(periodFields));
 
@@ -47,3 +59,4 @@ export type PeriodQuery = z.infer<typeof periodQuerySchema>;
 export type SalesReportQuery = z.infer<typeof salesReportQuerySchema>;
 export type TopProductsQuery = z.infer<typeof topProductsQuerySchema>;
 export type StockValueQuery = z.infer<typeof stockValueQuerySchema>;
+export type DashboardQuery = z.infer<typeof dashboardQuerySchema>;

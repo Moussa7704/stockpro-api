@@ -5,7 +5,8 @@ import type { CompanyAccess } from "../access/access.service.js";
 import { addDays, companyTimezone, localDate, localDayRange } from "../company/company-time.js";
 import { visibleShopIds } from "../stock/stock-access.js";
 import { listStockAlerts } from "../stock/stock-queries.service.js";
-import type { PeriodQuery, SalesReportQuery, StockValueQuery, TopProductsQuery } from "./reports.schemas.js";
+import { AppError } from "../../utils/app-error.js";
+import type { DashboardQuery, PeriodQuery, SalesReportQuery, StockValueQuery, TopProductsQuery } from "./reports.schemas.js";
 
 /**
  * Rapports (réservés à reports.view). Conventions :
@@ -325,18 +326,55 @@ export async function profitAndLoss(access: CompanyAccess, query: Omit<PeriodQue
 }
 
 // --- Tableau de bord
-export async function dashboard(access: CompanyAccess, shopId?: string) {
+export interface Period {
+  from: string;
+  to: string;
+}
+
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
+const monthIndex = (day: string) => Number(day.slice(0, 4)) * 12 + Number(day.slice(5, 7)) - 1;
+const monthStartOf = (index: number) => `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}-01`;
+const lastDayOfMonth = (day: string) => addDays(monthStartOf(monthIndex(day) + 1), -1);
+
+/**
+ * Période de comparaison : pour des mois entiers (du 1er au dernier jour), les mois précédents
+ * (septembre → août) ; sinon autant de jours juste avant (une journée → la veille).
+ */
+export function previousPeriod({ from, to }: Period): Period {
+  if (from.endsWith("-01") && to === lastDayOfMonth(to)) {
+    const months = monthIndex(to) - monthIndex(from) + 1;
+    return { from: monthStartOf(monthIndex(from) - months), to: addDays(from, -1) };
+  }
+  return { from: addDays(from, -daysBetween(from, to)), to: addDays(from, -1) };
+}
+
+/** Au-delà de 3 mois, le graphique passe du jour au mois. */
+const CHART_DAYS_LIMIT = 92;
+
+export async function dashboard(access: CompanyAccess, query: DashboardQuery = {}) {
+  const { shopId } = query;
   const scope = await reportScope(access, shopId);
   const today = localDate(scope.timezone);
   const yesterday = addDays(today, -1);
   const monthStart = `${today.slice(0, 8)}01`;
   const weekStart = addDays(today, -6);
 
-  const [lastDays, month, monthExpenses, top, [stock], alerts, [debt], [sessions]] = await Promise.all([
+  // Sans période : le mois en cours jusqu'à aujourd'hui
+  const period: Period = query.from && query.to ? { from: query.from, to: query.to } : { from: monthStart, to: today };
+  if (period.to > today) throw AppError.badRequest("La période ne peut pas dépasser aujourd'hui");
+  const previous = previousPeriod(period);
+  const groupBy = daysBetween(period.from, period.to) > CHART_DAYS_LIMIT ? "month" : "day";
+
+  const [lastDays, month, monthExpenses, current, currentExpenses, before, beforeExpenses, chart, top, [stock], alerts, [debt], [sessions]] = await Promise.all([
     salesRows(scope, addDays(today, -7), today, "day"),
     salesRows(scope, monthStart, today, "month"),
     expenseRows(scope, monthStart, today),
-    topProducts(access, { from: monthStart, to: today, shopId, sortBy: "revenue", limit: 5 }),
+    salesRows(scope, period.from, period.to, "month"),
+    expenseRows(scope, period.from, period.to),
+    salesRows(scope, previous.from, previous.to, "month"),
+    expenseRows(scope, previous.from, previous.to),
+    salesRows(scope, period.from, period.to, groupBy),
+    topProducts(access, { ...period, shopId, sortBy: "revenue", limit: 5 }),
     sequelize.query<{ value: string }>(
       `SELECT COALESCE(sum(sl.quantity * sl.average_cost), 0) AS value
        FROM stock_levels sl
@@ -361,6 +399,11 @@ export async function dashboard(access: CompanyAccess, shopId?: string) {
   const day = (date: string) => figures(lastDays.filter((row) => row.period === date), scope.currency);
   const monthFigures = figures(month, scope.currency);
   const monthExpenseTotal = expenseSummary(monthExpenses, scope.currency).total;
+  const withResult = (range: Period, rows: SalesRow[], expenses: Awaited<ReturnType<typeof expenseRows>>) => {
+    const sales = figures(rows, scope.currency);
+    const total = expenseSummary(expenses, scope.currency).total;
+    return { ...range, ...sales, expenses: total, netResult: money(new Decimal(sales.grossMargin).minus(total), scope.currency) };
+  };
 
   return {
     date: today,
@@ -378,7 +421,17 @@ export async function dashboard(access: CompanyAccess, shopId?: string) {
     last7Days: lastDays
       .filter((row) => row.period >= weekStart)
       .map((row) => ({ date: row.period, salesCount: Number(row.sales_count), netRevenue: figures([row], scope.currency).netRevenue })),
+    // Période choisie (par défaut le mois en cours) et sa période de comparaison
+    period: {
+      ...withResult(period, current, currentExpenses),
+      days: daysBetween(period.from, period.to),
+      previous: withResult(previous, before, beforeExpenses),
+      groupBy,
+      // Par mois : la première étiquette est le 1er du mois, même si la période commence plus tard
+      chart: chart.map((row) => ({ period: row.period, salesCount: Number(row.sales_count), netRevenue: figures([row], scope.currency).netRevenue })),
+    },
     topProducts: top.items,
+    // Stock, créances et caisses : situation à l'instant (le stock n'est pas historisé)
     stock: {
       value: money(stock!.value, scope.currency),
       lowStockCount: alerts.filter((alert) => alert.status === "low_stock").length,

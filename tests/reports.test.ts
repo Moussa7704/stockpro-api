@@ -4,10 +4,12 @@ import type { Response as SuperResponse } from "supertest";
 import { describe, expect, it } from "vitest";
 import { sequelize } from "../src/config/database.js";
 import { ExpenseCategory, PaymentMethod, Unit } from "../src/models/index.js";
+import { previousPeriod } from "../src/modules/reports/reports.service.js";
 import { addMember, api, bearer, createCompany, login, type Session } from "./helpers/auth.js";
 
 // Entreprises de test : fuseau Africa/Abidjan (UTC) → le jour de l'entreprise est le jour UTC
 const TODAY = new Date().toISOString().slice(0, 10);
+const addDaysTo = (day: string, days: number) => new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 const dayOffset = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 
 const post = (session: Session, path: string, body: object = {}, key?: string) => {
@@ -221,6 +223,10 @@ describe("Tableau de bord", () => {
     expect(dashboard.stock).toEqual({ value: "48000.00", lowStockCount: 1, outOfStockCount: 0 });
     expect(dashboard.customers).toEqual({ debtorsCount: 1, totalDebt: "1500.00" });
     expect(dashboard.openCashSessions).toBe(1);
+    // Sans période : le mois en cours jusqu'à aujourd'hui, comparé aux jours juste avant
+    expect(dashboard.period).toMatchObject({ from: `${TODAY.slice(0, 8)}01`, to: TODAY, netRevenue: "3000.00", expenses: "2000.00", netResult: "-1000.00", groupBy: "day" });
+    expect(dashboard.period.previous).toMatchObject({ to: addDaysTo(`${TODAY.slice(0, 8)}01`, -1), salesCount: 0 });
+    expect(dashboard.period.chart).toHaveLength(dashboard.period.days);
   });
 
   it("filtre par boutique et respecte le périmètre du gérant", async () => {
@@ -236,6 +242,59 @@ describe("Tableau de bord", () => {
     const scoped = (await get(manager, `/api/reports/sales?from=${TODAY}&to=${TODAY}`).expect(200)).body.report;
     expect(scoped.totals.revenue).toBe("0.00");
     await get(manager, `/api/reports/stock-value?shopId=${ctx.shop.id}`).expect(404);
+  });
+});
+
+describe("Tableau de bord sur une période passée", () => {
+  it("une date précise : chiffres de ce jour, comparés à la veille, top produits du jour", async () => {
+    const ctx = await withActivity();
+    // Les ventes partent 40 jours en arrière ; le retour et la dépense restent aujourd'hui
+    await backdateSales(ctx.company.id, 40);
+    const day = dayOffset(-40);
+
+    const dashboard = (await get(ctx.owner, `/api/reports/dashboard?from=${day}&to=${day}`).expect(200)).body.dashboard;
+
+    expect(dashboard.period).toMatchObject({ from: day, to: day, days: 1, groupBy: "day", salesCount: 2, revenue: "4500.00", refunds: "0.00", expenses: "0.00" });
+    expect(dashboard.period.previous).toMatchObject({ from: dayOffset(-41), to: dayOffset(-41), salesCount: 0 });
+    expect(dashboard.period.chart).toEqual([{ period: day, salesCount: 2, netRevenue: "4500.00" }]);
+    // Le top produits suit la période (retour rattaché à la vente d'origine)
+    expect(dashboard.topProducts[0]).toMatchObject({ sku: "RIZ", revenue: "3000.00" });
+    // Aujourd'hui reste aujourd'hui : seul le retour y figure ; le stock est celui de l'instant
+    expect(dashboard.today).toMatchObject({ salesCount: 0, refunds: "1500.00" });
+    expect(dashboard.stock.value).toBe("48000.00");
+  });
+
+  it("une longue période : graphique par mois", async () => {
+    const ctx = await setup();
+    const from = dayOffset(-200);
+
+    const dashboard = (await get(ctx.owner, `/api/reports/dashboard?from=${from}&to=${TODAY}`).expect(200)).body.dashboard;
+
+    expect(dashboard.period).toMatchObject({ from, to: TODAY, days: 201, groupBy: "month" });
+    expect(dashboard.period.chart.length).toBeGreaterThanOrEqual(7);
+    expect(dashboard.period.chart.every((point: { period: string }) => point.period.endsWith("-01"))).toBe(true);
+    expect(dashboard.period.previous).toMatchObject({ from: dayOffset(-401), to: dayOffset(-201) });
+  });
+
+  it("refuse une période incomplète, inversée, trop longue ou dans le futur", async () => {
+    const ctx = await setup();
+    const call = (query: string) => get(ctx.owner, `/api/reports/dashboard?${query}`).expect(400);
+
+    await call(`from=${TODAY}`);
+    await call(`from=${TODAY}&to=${dayOffset(-1)}`);
+    await call(`from=${dayOffset(-800)}&to=${TODAY}`);
+    const future = await call(`from=${TODAY}&to=${dayOffset(1)}`);
+    expect(future.body.error.message).toBe("La période ne peut pas dépasser aujourd'hui");
+  });
+
+  it("période de comparaison : mois entiers → mois précédents, sinon autant de jours juste avant", () => {
+    expect(previousPeriod({ from: "2026-10-05", to: "2026-10-05" })).toEqual({ from: "2026-10-04", to: "2026-10-04" });
+    expect(previousPeriod({ from: "2026-09-01", to: "2026-09-30" })).toEqual({ from: "2026-08-01", to: "2026-08-31" });
+    expect(previousPeriod({ from: "2026-03-01", to: "2026-03-31" })).toEqual({ from: "2026-02-01", to: "2026-02-28" });
+    expect(previousPeriod({ from: "2026-01-01", to: "2026-01-31" })).toEqual({ from: "2025-12-01", to: "2025-12-31" });
+    expect(previousPeriod({ from: "2026-07-01", to: "2026-09-30" })).toEqual({ from: "2026-04-01", to: "2026-06-30" });
+    expect(previousPeriod({ from: "2026-10-01", to: "2026-10-17" })).toEqual({ from: "2026-09-14", to: "2026-09-30" });
+    expect(previousPeriod({ from: "2026-03-10", to: "2026-03-19" })).toEqual({ from: "2026-02-28", to: "2026-03-09" });
   });
 });
 
