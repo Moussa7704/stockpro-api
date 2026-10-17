@@ -231,7 +231,13 @@ export const operations: Record<string, OperationDoc> = {
 
   // --- Rapports
   "GET /api/reports/dashboard": {
-    summary: "Tableau de bord : jour, veille, mois, 7 derniers jours, top produits, stock, créances, caisses ouvertes",
+    summary: "Tableau de bord : jour, veille, mois, période choisie, top produits, stock, créances, caisses ouvertes",
+    description:
+      "Période facultative `from`/`to` (jours du fuseau de l'entreprise, bornes incluses, au plus deux ans, jamais après aujourd'hui) : " +
+      "une date (from = to), un mois (du 1er au dernier jour) ou une période libre ; sans période, le mois en cours. " +
+      "`period` donne ses chiffres, ceux de la période précédente (mois entiers → mois précédents, sinon autant de jours juste avant) " +
+      "et un graphique par jour (par mois au-delà de 92 jours) ; le top produits suit la période. " +
+      "`today`, `yesterday`, `month` et `last7Days` restent ceux du jour. Stock, alertes, créances et caisses : situation à l'instant.",
     query: reports.dashboardQuerySchema,
   },
   "GET /api/reports/sales": {

@@ -11,8 +11,7 @@ export const reportsRoutes = Router();
 reportsRoutes.use(authenticate, requirePermission("reports.view"));
 
 reportsRoutes.get("/dashboard", async (req: Request, res: Response) => {
-  const { shopId } = parseQuery(schemas.dashboardQuerySchema, req.query);
-  res.json({ dashboard: await reports.dashboard(req.company!, shopId) });
+  res.json({ dashboard: await reports.dashboard(req.company!, parseQuery(schemas.dashboardQuerySchema, req.query)) });
 });
 
 reportsRoutes.get("/sales", async (req: Request, res: Response) => {
