@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { RefreshToken } from "../src/models/index.js";
 import { api, bearer, cookieHeader, createUser, login, refreshCookieOf } from "./helpers/auth.js";
 
 const EMAIL = "user@test.com";
@@ -62,22 +63,29 @@ describe("POST /api/auth/refresh", () => {
     await createUser({ email: EMAIL });
     const session = await login(EMAIL);
     const rotated = refreshCookieOf(await refresh(session.refreshToken).expect(200))!;
+    // Bien après la rotation (au-delà du délai de grâce entre onglets)
+    await RefreshToken.update({ revokedAt: new Date(Date.now() - 60_000) }, { where: { revokeReason: "rotated" } });
 
     // L'ancien token revient : probablement volé
     await refresh(session.refreshToken).expect(401);
 
     // Le token le plus récent est révoqué lui aussi
     await refresh(rotated).expect(401);
+    expect(await RefreshToken.count({ where: { revokeReason: "reuse" } })).toBe(1);
   });
 
-  it("n'accepte qu'un seul renouvellement simultané avec le même token", async () => {
+  it("deux onglets renouvellent en même temps : un seul passe, l'autre réessaie, rien n'est fermé", async () => {
     await createUser({ email: EMAIL });
     const session = await login(EMAIL);
 
     const responses = await Promise.all([1, 2, 3].map(() => refresh(session.refreshToken)));
 
     const statuses = responses.map((response) => response.status).sort();
-    expect(statuses).toEqual([200, 401, 401]);
+    expect(statuses).toEqual([200, 409, 409]);
+    expect(responses.find((response) => response.status === 409)!.body.error.message).toBe("Session renouvelée à l'instant, réessayez");
+    // La session survit : le nouveau cookie fonctionne
+    const winner = responses.find((response) => response.status === 200)!;
+    await refresh(refreshCookieOf(winner)).expect(200);
   });
 });
 
@@ -100,12 +108,15 @@ describe("POST /api/auth/logout", () => {
     await api().post("/api/auth/logout").expect(204);
   });
 
-  it("garde l'access token valide jusqu'à son expiration (15 min)", async () => {
+  it("invalide aussitôt l'access token de cet appareil", async () => {
     await createUser({ email: EMAIL });
     const session = await login(EMAIL);
-    await api().post("/api/auth/logout").set("Cookie", cookieHeader(session.refreshToken));
-
-    // Comportement attendu d'un JWT : seul le refresh token est révoqué côté serveur
     await api().get("/api/auth/me").set("Authorization", bearer(session)).expect(200);
+
+    await api().post("/api/auth/logout").set("Cookie", cookieHeader(session.refreshToken)).expect(204);
+
+    // La session porte un identifiant (sid) vérifié à chaque requête : plus besoin d'attendre 15 min
+    const response = await api().get("/api/auth/me").set("Authorization", bearer(session)).expect(401);
+    expect(response.body.error.message).toBe("Session fermée");
   });
 });

@@ -10,7 +10,8 @@ import {
   passwordTokenLimiter,
   refreshLimiter,
 } from "../../middlewares/rate-limit.middleware.js";
-import { validateBody } from "../../middlewares/validate.middleware.js";
+import { validateBody, validateParams } from "../../middlewares/validate.middleware.js";
+import { uuidParamsSchema } from "../../utils/query.js";
 import * as authController from "./auth.controller.js";
 import {
   changePasswordSchema,
@@ -53,6 +54,11 @@ authRoutes.post(
 authRoutes.post("/refresh", refreshLimiter, authController.refresh);
 authRoutes.post("/logout", authController.logout);
 authRoutes.get("/me", authenticate, authController.me);
+
+// Appareils connectés de l'utilisateur (Mon compte)
+authRoutes.get("/sessions", authenticate, authController.listSessions);
+authRoutes.post("/sessions/revoke-others", authenticate, authController.revokeOtherSessions);
+authRoutes.delete("/sessions/:id", authenticate, validateParams(uuidParamsSchema), authController.revokeSession);
 
 // Choix de l'entreprise active (utilisateur membre de plusieurs entreprises)
 authRoutes.post(

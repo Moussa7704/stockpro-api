@@ -45,10 +45,20 @@ export const operations: Record<string, OperationDoc> = {
   "POST /api/auth/login/otp/resend": { summary: "Renvoyer le code de connexion par email" },
   "POST /api/auth/refresh": {
     summary: "Nouveau token d'accès",
-    description: "Utilise le refresh token du cookie httpOnly (rotation : l'ancien est invalidé). Pas d'en-tête Authorization.",
+    description:
+      "Utilise le refresh token du cookie httpOnly (rotation : l'ancien est invalidé, la session garde son identifiant). " +
+      "Pas d'en-tête Authorization. 409 si un autre onglet vient de renouveler la même session : réessayer (le navigateur a déjà le nouveau cookie).",
   },
   "POST /api/auth/logout": { summary: "Déconnexion (révoque le refresh token du cookie)" },
   "GET /api/auth/me": { summary: "Utilisateur connecté, ses entreprises et ses droits dans l'entreprise active" },
+  "GET /api/auth/sessions": {
+    summary: "Appareils connectés : navigateur, adresse IP, connexion, dernière activité ; celui-ci en premier (current)",
+  },
+  "POST /api/auth/sessions/revoke-others": { summary: "Déconnecter tous les autres appareils (renvoie le nombre déconnecté)" },
+  "DELETE /api/auth/sessions/:id": {
+    summary: "Déconnecter un autre appareil",
+    description: "Effet immédiat : ses access tokens sont refusés dès sa requête suivante. Pour l'appareil courant, utiliser /api/auth/logout.",
+  },
   "POST /api/auth/company": {
     summary: "Choisir ou changer d'entreprise active",
     description: "Renvoie un nouveau token d'accès portant l'entreprise choisie : toutes les données sont ensuite filtrées sur elle.",

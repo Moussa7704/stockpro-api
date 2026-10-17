@@ -7,6 +7,9 @@ export interface AccessTokenPayload {
   // Entreprise active (null : aucune choisie). Le rôle et les permissions ne sont PAS dans le
   // token : ils sont relus en base à chaque requête, pour qu'un retrait de droits soit immédiat.
   companyId: string | null;
+  // Session (appareil) d'origine : une session fermée invalide aussitôt ses access tokens.
+  // Absent des tokens émis avant les appareils connectés (ils expirent en 15 min).
+  sid?: string;
 }
 
 export interface LoginChallenge {
@@ -36,15 +39,17 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
   const payload = jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: ["HS256"] });
 
   const companyId: unknown = typeof payload === "string" ? undefined : payload.companyId;
+  const sid: unknown = typeof payload === "string" ? undefined : payload.sid;
   if (
     typeof payload === "string" ||
     typeof payload.sub !== "string" ||
-    !(companyId === null || typeof companyId === "string")
+    !(companyId === null || typeof companyId === "string") ||
+    !(sid === undefined || typeof sid === "string")
   ) {
     throw new jwt.JsonWebTokenError("Payload invalide");
   }
 
-  return { sub: payload.sub, companyId };
+  return { sub: payload.sub, companyId, ...(sid && { sid }) };
 }
 
 /** Jeton intermédiaire du login : prouve que le mot de passe a été validé, rien de plus. */
