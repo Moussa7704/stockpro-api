@@ -2,11 +2,12 @@ import type { Request, RequestHandler } from "express";
 import { withMeta } from "../docs/route-meta.js";
 import { User } from "../models/index.js";
 import { loadCompanyAccess, type CompanyAccess } from "../modules/access/access.service.js";
+import { isSessionActive } from "../modules/auth/sessions.service.js";
 import type { Permission } from "../modules/access/permissions.js";
 import { AppError } from "../utils/app-error.js";
 import { verifyAccessToken, type AccessTokenPayload } from "../utils/jwt.js";
 
-export const authenticate: RequestHandler = (req, _res, next) => {
+export const authenticate: RequestHandler = async (req, _res, next) => {
   const header = req.headers.authorization;
 
   if (!header?.startsWith("Bearer ")) {
@@ -22,6 +23,12 @@ export const authenticate: RequestHandler = (req, _res, next) => {
     payload = verifyAccessToken(token);
   } catch {
     return next(AppError.unauthorized("Token invalide ou expiré"));
+  }
+
+  // Appareil déconnecté (depuis un autre appareil, ou au changement de mot de passe) : ses access
+  // tokens ne servent plus, sans attendre leur expiration
+  if (payload.sid && !(await isSessionActive(payload.sid))) {
+    return next(AppError.unauthorized("Session fermée"));
   }
 
   req.user = payload;

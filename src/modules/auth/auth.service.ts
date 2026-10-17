@@ -1,8 +1,9 @@
-import { createHash, randomBytes } from "node:crypto";
-import { Op } from "sequelize";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { Op, type Transaction } from "sequelize";
 import { sequelize } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import { Company, PasswordToken, RefreshToken, User } from "../../models/index.js";
+import type { RevokeReason } from "../../models/refresh-token.model.js";
 import { AppError } from "../../utils/app-error.js";
 import {
   signAccessToken,
@@ -26,31 +27,57 @@ export interface AuthTokens {
 }
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+// Deux onglets qui renouvellent la session au même instant avec le même cookie : le second
+// arrive juste après la rotation. Ce n'est pas un vol : on lui demande de réessayer.
+const ROTATION_GRACE_MS = 30 * 1000;
+
+/** Appareil qui ouvre ou renouvelle la session (pour la liste des appareils connectés). */
+export interface SessionClient {
+  userAgent?: string | null;
+  ipAddress?: string | null;
+}
 
 // SHA-256 suffit ici (pas besoin de bcrypt) : le token est aléatoire sur 256 bits, impossible à deviner
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-/** Ouvre une session ; companyId = entreprise active (null si aucune n'est choisie). */
-async function createSession(user: User, companyId: string | null): Promise<AuthTokens> {
+/**
+ * Ouvre une session (nouvel appareil) ou la prolonge (renouvellement : même sessionId).
+ * companyId = entreprise active (null si aucune n'est choisie).
+ */
+async function createSession(
+  user: User,
+  companyId: string | null,
+  client: SessionClient = {},
+  existing?: { sessionId: string; startedAt: Date },
+  transaction?: Transaction,
+): Promise<AuthTokens> {
   const refreshToken = randomBytes(32).toString("base64url");
+  const sessionId = existing?.sessionId ?? randomUUID();
 
-  await RefreshToken.create({
-    userId: user.id,
-    companyId,
-    tokenHash: hashToken(refreshToken),
-    expiresAt: new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * DAY_IN_MS),
-  });
+  await RefreshToken.create(
+    {
+      userId: user.id,
+      companyId,
+      tokenHash: hashToken(refreshToken),
+      expiresAt: new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * DAY_IN_MS),
+      sessionId,
+      sessionStartedAt: existing?.startedAt ?? new Date(),
+      userAgent: client.userAgent?.slice(0, 512) ?? null,
+      ipAddress: client.ipAddress?.slice(0, 64) ?? null,
+    },
+    { transaction },
+  );
 
   return {
-    accessToken: signAccessToken({ sub: user.id, companyId }),
+    accessToken: signAccessToken({ sub: user.id, companyId, sid: sessionId }),
     refreshToken,
   };
 }
 
-async function revokeAllSessions(userId: string): Promise<void> {
-  await RefreshToken.update({ revokedAt: new Date() }, { where: { userId, revokedAt: null } });
+async function revokeAllSessions(userId: string, reason: RevokeReason): Promise<void> {
+  await RefreshToken.update({ revokedAt: new Date(), revokeReason: reason }, { where: { userId, revokedAt: null } });
 }
 
 export interface LoginChallengeResult {
@@ -95,7 +122,7 @@ export interface LoginSessionResult extends AuthTokens {
 }
 
 /** Deuxième étape du login : challenge + code reçu par email → la session est créée. */
-export async function loginWithOtp(input: LoginOtpInput): Promise<LoginSessionResult> {
+export async function loginWithOtp(input: LoginOtpInput, client: SessionClient = {}): Promise<LoginSessionResult> {
   const challenge = readChallenge(input.challengeToken);
   await otpService.verifyCode(challenge, input.code);
 
@@ -106,7 +133,7 @@ export async function loginWithOtp(input: LoginOtpInput): Promise<LoginSessionRe
 
   const companies = await listUserCompanies(user.id);
   const activeCompanyId = companies.length === 1 ? companies[0]!.id : null;
-  return { user, companies, activeCompanyId, ...(await createSession(user, activeCompanyId)) };
+  return { user, companies, activeCompanyId, ...(await createSession(user, activeCompanyId, client)) };
 }
 
 /**
@@ -117,6 +144,7 @@ export async function switchCompany(
   userId: string,
   companyId: string,
   currentRefreshToken?: string,
+  sessionId?: string,
 ): Promise<{ accessToken: string }> {
   // 404 et pas 403 : on ne révèle pas l'existence d'une entreprise à laquelle on n'a pas accès
   if (!(await loadCompanyAccess(userId, companyId))) {
@@ -130,7 +158,7 @@ export async function switchCompany(
     );
   }
 
-  return { accessToken: signAccessToken({ sub: userId, companyId }) };
+  return { accessToken: signAccessToken({ sub: userId, companyId, ...(sessionId && { sid: sessionId }) }) };
 }
 
 export async function resendOtp(challengeToken: string): Promise<{ expiresInSeconds: number }> {
@@ -142,33 +170,31 @@ export async function resendOtp(challengeToken: string): Promise<{ expiresInSeco
  * Échange un refresh token contre une nouvelle paire de tokens (rotation) :
  * l'ancien refresh token est révoqué et ne pourra plus jamais servir.
  */
-export async function refresh(refreshToken: string): Promise<AuthTokens> {
+export async function refresh(refreshToken: string, client: SessionClient = {}): Promise<AuthTokens> {
   const session = await RefreshToken.findOne({ where: { tokenHash: hashToken(refreshToken) } });
 
   if (!session) {
     throw AppError.unauthorized("Session invalide");
   }
 
-  // Un token déjà révoqué qui revient a probablement été volé :
-  // on ferme toutes les sessions de l'utilisateur par précaution
   if (session.revokedAt) {
-    await revokeAllSessions(session.userId);
+    // Appareil déconnecté (par lui-même, depuis un autre appareil ou au changement de mot de passe) :
+    // simple refus, les autres sessions ne sont pas concernées
+    if (session.revokeReason !== "rotated") {
+      throw AppError.unauthorized("Session fermée");
+    }
+    // Renouvelé à l'instant par un autre onglet du même navigateur : il a déjà le nouveau cookie
+    if (Date.now() - session.revokedAt.getTime() < ROTATION_GRACE_MS) {
+      throw AppError.conflict("Session renouvelée à l'instant, réessayez");
+    }
+    // Un jeton déjà remplacé qui revient plus tard a probablement été volé :
+    // on ferme toutes les sessions de l'utilisateur par précaution
+    await revokeAllSessions(session.userId, "reuse");
     throw AppError.unauthorized("Session invalide");
   }
 
   if (session.expiresAt <= new Date()) {
     throw AppError.unauthorized("Session expirée");
-  }
-
-  // La condition revokedAt: null rend la révocation atomique :
-  // si deux requêtes utilisent le même token en même temps, une seule passe
-  const [revokedCount] = await RefreshToken.update(
-    { revokedAt: new Date() },
-    { where: { id: session.id, revokedAt: null } },
-  );
-  if (revokedCount === 0) {
-    await revokeAllSessions(session.userId);
-    throw AppError.unauthorized("Session invalide");
   }
 
   const user = await User.findByPk(session.userId);
@@ -182,12 +208,29 @@ export async function refresh(refreshToken: string): Promise<AuthTokens> {
     companyId = await defaultCompanyId(user.id);
   }
 
-  return createSession(user, companyId);
+  // Rotation atomique : à aucun instant la session n'est sans ligne active (ses access tokens
+  // restent valides), et si deux requêtes utilisent le même jeton en même temps, une seule passe
+  return sequelize.transaction(async (transaction) => {
+    const [revokedCount] = await RefreshToken.update(
+      { revokedAt: new Date(), revokeReason: "rotated" },
+      { where: { id: session.id, revokedAt: null }, transaction },
+    );
+    if (revokedCount === 0) {
+      throw AppError.conflict("Session renouvelée à l'instant, réessayez");
+    }
+    return createSession(
+      user,
+      companyId,
+      { userAgent: client.userAgent ?? session.userAgent, ipAddress: client.ipAddress ?? session.ipAddress },
+      { sessionId: session.sessionId, startedAt: session.sessionStartedAt },
+      transaction,
+    );
+  });
 }
 
 export async function logout(refreshToken: string): Promise<void> {
   await RefreshToken.update(
-    { revokedAt: new Date() },
+    { revokedAt: new Date(), revokeReason: "logout" },
     { where: { tokenHash: hashToken(refreshToken), revokedAt: null } },
   );
 }
@@ -266,7 +309,7 @@ export async function changePassword(
       ? { tokenHash: { [Op.ne]: hashToken(currentRefreshToken) } }
       : {};
     await RefreshToken.update(
-      { revokedAt: new Date() },
+      { revokedAt: new Date(), revokeReason: "password_change" },
       { where: { userId, revokedAt: null, ...keepCurrentSession }, transaction },
     );
 

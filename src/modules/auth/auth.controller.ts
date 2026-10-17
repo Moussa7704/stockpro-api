@@ -3,6 +3,7 @@ import { env } from "../../config/env.js";
 import { AppError } from "../../utils/app-error.js";
 import * as authService from "./auth.service.js";
 import * as passwordService from "./password.service.js";
+import * as sessionsService from "./sessions.service.js";
 
 const REFRESH_COOKIE = "refreshToken";
 
@@ -23,6 +24,11 @@ function setRefreshCookie(res: Response, refreshToken: string): void {
   });
 }
 
+/** Appareil à l'origine de la requête, pour la liste des appareils connectés. */
+function sessionClient(req: Request): authService.SessionClient {
+  return { userAgent: req.get("user-agent") ?? null, ipAddress: req.ip ?? null };
+}
+
 function getRefreshCookie(req: Request): string | undefined {
   const token: unknown = req.cookies?.[REFRESH_COOKIE];
   return typeof token === "string" ? token : undefined;
@@ -35,7 +41,7 @@ export async function login(req: Request, res: Response): Promise<void> {
 }
 
 export async function loginWithOtp(req: Request, res: Response): Promise<void> {
-  const { refreshToken, ...result } = await authService.loginWithOtp(req.body);
+  const { refreshToken, ...result } = await authService.loginWithOtp(req.body, sessionClient(req));
   setRefreshCookie(res, refreshToken);
   res.json(result);
 }
@@ -45,6 +51,7 @@ export async function switchCompany(req: Request, res: Response): Promise<void> 
     req.user!.sub,
     req.body.companyId,
     getRefreshCookie(req),
+    req.user!.sid,
   );
   res.json(result);
 }
@@ -60,7 +67,7 @@ export async function refresh(req: Request, res: Response): Promise<void> {
     throw AppError.unauthorized("Session absente");
   }
 
-  const { accessToken, refreshToken } = await authService.refresh(currentToken);
+  const { accessToken, refreshToken } = await authService.refresh(currentToken, sessionClient(req));
   setRefreshCookie(res, refreshToken);
   res.json({ accessToken });
 }
@@ -96,6 +103,19 @@ export async function checkPasswordToken(req: Request, res: Response): Promise<v
 export async function resetPassword(req: Request, res: Response): Promise<void> {
   await passwordService.setPasswordWithToken(req.body.token, req.body.password);
   res.json({ message: "Mot de passe enregistré, vous pouvez vous connecter" });
+}
+
+export async function listSessions(req: Request, res: Response): Promise<void> {
+  res.json({ sessions: await sessionsService.listSessions(req.user!.sub, req.user!.sid) });
+}
+
+export async function revokeSession(req: Request<{ id: string }>, res: Response): Promise<void> {
+  await sessionsService.revokeSession(req.user!.sub, req.params.id, req.user!.sid);
+  res.status(204).end();
+}
+
+export async function revokeOtherSessions(req: Request, res: Response): Promise<void> {
+  res.json({ revoked: await sessionsService.revokeOtherSessions(req.user!.sub, req.user!.sid) });
 }
 
 export async function changePassword(req: Request, res: Response): Promise<void> {
