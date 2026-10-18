@@ -170,6 +170,8 @@ export function buildOpenApiDocument() {
                   type: "array",
                   items: { type: "object", properties: { field: { type: "string" }, message: { type: "string" } } },
                 },
+                // Même valeur que l'en-tête X-Request-Id : retrouve la ligne du journal du serveur
+                requestId: { type: "string" },
               },
             },
           },

@@ -17,6 +17,8 @@ const envSchema = z.object({
   RATE_LIMIT_ENABLED: z.stringbool().default(true),
   // Documentation interactive /api/docs : par défaut active partout sauf en production
   API_DOCS_ENABLED: z.stringbool().optional(),
+  // Niveau du journal : debug (requêtes SQL comprises), info, warn, error ; silent en test
+  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).optional(),
   // Adresse du front : sert à construire les liens envoyés par email (invitation, mot de passe oublié)
   CLIENT_URL: z.url().default("http://localhost:5173"),
 
@@ -54,6 +56,7 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
+  // Pas encore de journal (il dépend de cette configuration) : sortie directe
   console.error("Variables d'environnement invalides :");
   console.error(z.prettifyError(parsed.error));
   process.exit(1);
@@ -62,4 +65,5 @@ if (!parsed.success) {
 export const env = {
   ...parsed.data,
   API_DOCS_ENABLED: parsed.data.API_DOCS_ENABLED ?? parsed.data.NODE_ENV !== "production",
+  LOG_LEVEL: parsed.data.LOG_LEVEL ?? (parsed.data.NODE_ENV === "test" ? "silent" : "info"),
 };

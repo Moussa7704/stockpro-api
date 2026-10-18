@@ -1,5 +1,6 @@
 import { app } from "./app.js";
 import { env } from "./config/env.js";
+import { logger } from "./config/logger.js";
 import { connectDatabase } from "./config/database.js";
 import { assertNoPendingMigrations } from "./database/migrator.js";
 import { startCleanupJob } from "./jobs/cleanup.js";
@@ -11,14 +12,24 @@ async function bootstrap(): Promise<void> {
   await assertNoPendingMigrations();
 
   app.listen(env.PORT, () => {
-    console.log(`StockPro API démarrée sur http://localhost:${env.PORT}`);
+    logger.info(`StockPro API démarrée sur http://localhost:${env.PORT}`);
   });
 
   // Purge des sessions, codes OTP et liens expirés : au démarrage puis toutes les heures
   startCleanupJob();
 }
 
+// Erreur que personne n'a interceptée : on la journalise avant tout ; une exception non gérée
+// laisse le processus dans un état incertain, il est redémarré (Docker, gestionnaire de services)
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: reason }, "Promesse rejetée non gérée");
+});
+process.on("uncaughtException", (error) => {
+  logger.fatal({ err: error }, "Exception non gérée : arrêt du serveur");
+  process.exit(1);
+});
+
 bootstrap().catch((error) => {
-  console.error("Échec du démarrage :", error);
+  logger.fatal({ err: error }, "Échec du démarrage");
   process.exit(1);
 });

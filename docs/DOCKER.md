@@ -22,12 +22,22 @@ Ordre de démarrage, géré par Compose :
 |---|---|
 | État des services | `docker compose ps` |
 | Logs de l'API | `docker compose logs -f api` |
+| Retrouver une requête signalée par un commerçant (numéro d'erreur) | `docker compose logs api \| grep <numéro>` |
+| Seulement les erreurs | `docker compose logs api \| grep '"level":50'` |
 | Appliquer de nouvelles migrations | `docker compose run --rm migrate` |
 | Créer l'administrateur SaaS | `docker compose exec api node dist/scripts/create-admin.js --email admin@exemple.com --name "Prénom Nom"` |
 | Purger sessions et codes expirés | `docker compose exec api node dist/scripts/cleanup.js` |
 | Tester l'envoi d'emails | `docker compose exec api node dist/scripts/verify-mailer.js` |
 | Arrêter | `docker compose down` |
 | Arrêter **et effacer la base** | `docker compose down -v` (irréversible) |
+
+## Journal
+
+L'API écrit une ligne JSON par requête (méthode, adresse, statut, durée, utilisateur, entreprise,
+numéro `req.id`) et par erreur (avec sa pile). Chaque réponse renvoie ce numéro dans l'en-tête
+`X-Request-Id`, et chaque erreur dans `error.requestId` : c'est le numéro qu'un commerçant peut citer.
+Mots de passe, jetons et cookies sont masqués. Niveau réglable par `LOG_LEVEL`
+(`debug` affiche aussi les requêtes SQL, `info` par défaut).
 
 ## Développer avec la base Docker seule
 

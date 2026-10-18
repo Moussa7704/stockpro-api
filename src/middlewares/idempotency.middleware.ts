@@ -71,7 +71,7 @@ export function idempotent({ required = false } = {}): RequestHandler {
             IdempotencyKey.destroy({ where: { companyId, key } });
 
       persist
-        .catch((error: unknown) => console.error("Échec de l'enregistrement de la clé d'idempotence :", error))
+        .catch((error: unknown) => req.log.error({ err: error }, "Échec de l'enregistrement de la clé d'idempotence"))
         .finally(() => sendJson(body));
       return res;
     };

@@ -4,6 +4,7 @@ import helmet from "helmet";
 import { sequelize } from "./config/database.js";
 import { env } from "./config/env.js";
 import { errorHandler, notFoundHandler } from "./middlewares/error.middleware.js";
+import { requestLogger } from "./middlewares/request-logger.middleware.js";
 import { apiLimiter } from "./middlewares/rate-limit.middleware.js";
 import { createDocsRouter } from "./docs/docs.routes.js";
 import { apiRouters } from "./routes.js";
@@ -18,6 +19,9 @@ app.set("trust proxy", env.TRUST_PROXY);
 // En-têtes de sécurité HTTP standard (anti-clickjacking, anti "sniffing" de type MIME,
 // HSTS, Content-Security-Policy…) et suppression de X-Powered-By qui révèle "Express"
 app.use(helmet());
+
+// Journal : une ligne par requête, avec son numéro (X-Request-Id)
+app.use(requestLogger);
 
 app.use(express.json());
 app.use(cookieParser()); // remplit req.cookies (refresh token)

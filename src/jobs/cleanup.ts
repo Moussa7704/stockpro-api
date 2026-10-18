@@ -1,4 +1,5 @@
 import { Op } from "sequelize";
+import { logger } from "../config/logger.js";
 import { EmailOtpCode, IdempotencyKey, PasswordToken, RefreshToken } from "../models/index.js";
 
 /**
@@ -55,10 +56,10 @@ export function startCleanupJob(intervalMs = HOUR_MS): () => void {
       .then((result) => {
         const total = result.refreshTokens + result.otpCodes + result.passwordTokens + result.idempotencyKeys;
         if (total > 0) {
-          console.log("Purge auth :", result);
+          logger.info({ result }, "Purge des sessions, codes et liens expirés");
         }
       })
-      .catch((error: unknown) => console.error("Échec de la purge auth :", error));
+      .catch((error: unknown) => logger.error({ err: error }, "Échec de la purge des sessions, codes et liens expirés"));
   };
 
   run();

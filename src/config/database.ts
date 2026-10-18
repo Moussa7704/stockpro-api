@@ -1,5 +1,6 @@
 import { Sequelize } from "sequelize";
 import { env } from "./env.js";
+import { logger } from "./logger.js";
 
 export const sequelize = new Sequelize({
   dialect: "postgres",
@@ -8,7 +9,8 @@ export const sequelize = new Sequelize({
   database: env.DB_NAME,
   username: env.DB_USER,
   password: env.DB_PASSWORD,
-  logging: env.NODE_ENV === "development" ? console.log : false,
+  // Requêtes SQL visibles avec LOG_LEVEL=debug (trop bavard pour le niveau normal)
+  logging: (sql) => logger.debug({ sql }, "SQL"),
   define: {
     underscored: true, // colonnes en snake_case : created_at, updated_at
   },
@@ -16,5 +18,5 @@ export const sequelize = new Sequelize({
 
 export async function connectDatabase(): Promise<void> {
   await sequelize.authenticate();
-  console.log("Connexion à PostgreSQL établie");
+  logger.info("Connexion à PostgreSQL établie");
 }

@@ -21,7 +21,7 @@ describe("Socle de l'API", () => {
   it("renvoie une 404 au format JSON de l'API", async () => {
     const response = await api().get("/api/nexiste-pas").expect(404);
 
-    expect(response.body).toEqual({ error: { message: "Route introuvable : GET /api/nexiste-pas" } });
+    expect(response.body).toEqual({ error: { message: "Route introuvable : GET /api/nexiste-pas", requestId: response.headers["x-request-id"] } });
   });
 
   it("renvoie une 400 lisible pour un JSON mal formé", async () => {
