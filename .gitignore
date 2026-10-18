@@ -1,3 +1,5 @@
 node_modules
 dist
 .env
+# Sauvegardes de la base (pnpm db:backup) : jamais dans git
+backups/

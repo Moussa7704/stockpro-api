@@ -1,6 +1,7 @@
 # StockPro API + PostgreSQL. Les secrets viennent du fichier .env (voir .env.example).
 #   docker compose up -d --build     démarre la base, applique les migrations, lance l'API
 #   docker compose up -d db          base seule (pour développer avec pnpm dev, port 5433)
+#   docker compose run --rm backup node dist/scripts/backup.js   sauvegarde immédiate
 
 # Configuration commune à l'API et au service de migration (même image)
 x-api: &api
@@ -56,5 +57,28 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # Sauvegarde chaque nuit (BACKUP_HOUR, 2 h par défaut, heure de TZ), conservation 7 j / 4 sem. / 12 mois,
+  # puis vérification par restauration dans une base temporaire. Fichiers dans le volume « backups ».
+  backup:
+    build:
+      context: .
+      target: backup
+    image: stockpro-backup
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: 5432
+      BACKUP_DIR: /backups
+      TZ: ${TZ:-Africa/Abidjan}
+    volumes:
+      - backups:/backups
+    restart: unless-stopped
+    init: true
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  backups:

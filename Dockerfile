@@ -18,7 +18,22 @@ RUN pnpm build
 FROM base AS prod-deps
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm-store pnpm install --frozen-lockfile --prod --store-dir /pnpm-store
 
-# ---- Image finale : Node + dépendances de prod + code compilé (ni pnpm, ni sources TypeScript) ----
+# ---- Service de sauvegarde (docker compose : « backup ») : même code, plus les outils PostgreSQL ----
+# Alpine fournit pg_dump 16, la version de la base (postgres:16) ; les dépendances sont du
+# JavaScript pur, utilisables telles quelles. tzdata : la variable TZ fixe l'heure de la sauvegarde.
+FROM node:22-alpine AS backup
+RUN apk add --no-cache postgresql16-client tzdata
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --chown=node:node package.json ./
+COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+# Dossier des sauvegardes (volume) ; il appartient à l'utilisateur node, jamais root
+RUN mkdir -p /backups && chown node:node /backups
+USER node
+CMD ["node", "--enable-source-maps", "dist/scripts/backup-scheduler.js"]
+
+# ---- Image finale (cible par défaut) : Node + dépendances de prod + code compilé (ni pnpm, ni sources TypeScript) ----
 FROM node:22-slim AS production
 ENV NODE_ENV=production
 WORKDIR /app

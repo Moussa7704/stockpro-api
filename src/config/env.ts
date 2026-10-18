@@ -19,6 +19,14 @@ const envSchema = z.object({
   API_DOCS_ENABLED: z.stringbool().optional(),
   // Niveau du journal : debug (requêtes SQL comprises), info, warn, error ; silent en test
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).optional(),
+  // Sauvegardes (pnpm db:backup, service Docker « backup ») : dossier, heure locale (variable TZ)
+  BACKUP_DIR: z.string().min(1).default("backups"),
+  BACKUP_HOUR: z.coerce.number().int().min(0).max(23).default(2),
+  // Dossier des outils PostgreSQL (pg_dump, pg_restore…) s'ils ne sont pas dans le PATH (Windows)
+  PG_BIN_DIR: z.string().min(1).optional(),
+  // Compte autorisé à créer une base, pour vérifier une sauvegarde (sinon celui de l'application)
+  BACKUP_VERIFY_DB_USER: z.string().min(1).optional(),
+  BACKUP_VERIFY_DB_PASSWORD: z.string().min(1).optional(),
   // Adresse du front : sert à construire les liens envoyés par email (invitation, mot de passe oublié)
   CLIENT_URL: z.url().default("http://localhost:5173"),
 
