@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { Op, type Transaction } from "sequelize";
 import { env } from "../../config/env.js";
+import { logger } from "../../config/logger.js";
 import { sequelize } from "../../config/database.js";
 import { EmailOtpCode, PasswordToken, RefreshToken, User } from "../../models/index.js";
 import type { PasswordTokenPurpose } from "../../models/password-token.model.js";
@@ -46,7 +47,7 @@ export function notifyPasswordChanged(user: User): void {
     name: user.name,
     resetLink: new URL("/forgot-password", env.CLIENT_URL).toString(),
   }).catch((error: unknown) => {
-    console.error("Échec de l'envoi de l'alerte de changement de mot de passe :", error);
+    logger.error({ err: error }, "Échec de l'envoi de l'alerte de changement de mot de passe");
   });
 }
 
@@ -102,7 +103,7 @@ export async function sendInvitation(
       expiresInHours: INVITE_TTL_HOURS,
     });
   } catch (error) {
-    console.error("Échec de l'envoi de l'email d'invitation :", error);
+    logger.error({ err: error }, "Échec de l'envoi de l'email d'invitation");
     throw AppError.serviceUnavailable("Impossible d'envoyer l'email d'invitation, réessayez plus tard");
   }
 }
@@ -124,7 +125,7 @@ export async function notifyCompanyAccess(
       loginUrl: new URL("/login", env.CLIENT_URL).toString(),
     });
   } catch (error) {
-    console.error("Échec de l'envoi de l'email d'accès à l'entreprise :", error);
+    logger.error({ err: error }, "Échec de l'envoi de l'email d'accès à l'entreprise");
     throw AppError.serviceUnavailable("Impossible d'envoyer l'email, réessayez plus tard");
   }
 }
@@ -159,7 +160,7 @@ export async function requestPasswordReset(email: string): Promise<void> {
     link: buildLink(token),
     expiresInMinutes: RESET_TTL_MINUTES,
   }).catch((error: unknown) => {
-    console.error("Échec de l'envoi de l'email de réinitialisation :", error);
+    logger.error({ err: error }, "Échec de l'envoi de l'email de réinitialisation");
   });
 }
 

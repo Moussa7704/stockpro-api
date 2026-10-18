@@ -1,5 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { literal, Op } from "sequelize";
+import { logger } from "../../config/logger.js";
 import { EmailOtpCode, User } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
 import { hmac, safeEqual } from "../../utils/crypto.js";
@@ -38,7 +39,7 @@ async function deliverCode(user: User, code: string): Promise<void> {
     });
   } catch (error) {
     // Le détail (identifiants SMTP refusés, serveur injoignable…) reste dans les logs du serveur
-    console.error("Échec de l'envoi de l'email OTP :", error);
+    logger.error({ err: error }, "Échec de l'envoi de l'email OTP");
     throw AppError.serviceUnavailable("Impossible d'envoyer le code par email, réessayez plus tard");
   }
 }
