@@ -18,6 +18,9 @@
     "db:migration:create": "tsx src/database/cli.ts create --name",
     "db:migrate:prod": "node dist/database/cli.js up",
     "db:cleanup": "tsx src/scripts/cleanup.ts",
+    "db:backup": "tsx src/scripts/backup.ts",
+    "db:backup:verify": "tsx src/scripts/backup-verify.ts",
+    "db:restore": "tsx src/scripts/restore.ts",
     "mail:verify": "tsx src/scripts/verify-mailer.ts",
     "user:create-admin": "tsx src/scripts/create-admin.ts"
   },

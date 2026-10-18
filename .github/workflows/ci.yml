@@ -65,7 +65,8 @@ jobs:
           DB_PASSWORD: postgres
           TEST_DB_NAME: stockpro_test
 
-  # L'image Docker se construit et la stack complète démarre (base → migrations → API saine).
+  # Les images Docker se construisent et la stack complète démarre (base → migrations → API saine,
+  # service de sauvegarde).
   # Un Dockerfile ou un docker-compose.yml cassé est détecté sur la PR, pas le jour du déploiement.
   docker:
     runs-on: ubuntu-latest
@@ -99,6 +100,12 @@ jobs:
 
       - name: Migrations rejouables sans effet
         run: docker compose run --rm migrate | grep "applied 0 migrations"
+
+      # Vraie sauvegarde (pg_dump 16 de l'image « backup »), puis restauration dans une base temporaire
+      - name: Sauvegarde et vérification par restauration
+        run: |
+          docker compose run --rm backup node dist/scripts/backup.js
+          docker compose run --rm backup node dist/scripts/backup-verify.js
 
       - name: Logs en cas d'échec
         if: failure()

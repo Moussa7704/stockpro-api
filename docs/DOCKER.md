@@ -28,8 +28,9 @@ Ordre de démarrage, géré par Compose :
 | Créer l'administrateur SaaS | `docker compose exec api node dist/scripts/create-admin.js --email admin@exemple.com --name "Prénom Nom"` |
 | Purger sessions et codes expirés | `docker compose exec api node dist/scripts/cleanup.js` |
 | Tester l'envoi d'emails | `docker compose exec api node dist/scripts/verify-mailer.js` |
+| Sauvegarder / restaurer la base | voir [SAUVEGARDES.md](SAUVEGARDES.md) |
 | Arrêter | `docker compose down` |
-| Arrêter **et effacer la base** | `docker compose down -v` (irréversible) |
+| Arrêter **et effacer la base ET les sauvegardes** | `docker compose down -v` (irréversible : copiez d'abord les sauvegardes, voir [SAUVEGARDES.md](SAUVEGARDES.md)) |
 
 ## Journal
 
