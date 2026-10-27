@@ -127,6 +127,21 @@ export const operations: Record<string, OperationDoc> = {
     summary: "Trouver un produit par code-barres ou SKU (caisse, scan)",
     query: catalog.lookupProductQuerySchema,
   },
+  "GET /api/products/import/template": { summary: "Modèle Excel vierge pour l'import de produits" },
+  "POST /api/products/import/analyze": {
+    summary: "Import, étape 1 : lire le fichier du commerçant (.xlsx ou .csv)",
+    description:
+      "Renvoie les colonnes trouvées, 10 lignes d'exemple et la correspondance proposée colonne → champ " +
+      "(« Désignation » → nom, « PU » → prix de vente…). Rien n'est écrit.",
+  },
+  "POST /api/products/import": {
+    summary: "Import, étapes 2 et 3 : aperçu (dryRun) puis import des produits",
+    description:
+      "Même fichier + `options` (correspondance des colonnes, unité par défaut…). Chaque ligne est classée : " +
+      "`create`, `existing` (même SKU ou code-barres : non modifié), `skipped` (ligne sans nom, total…) ou `error`. " +
+      "Avec `dryRun: true`, rien n'est écrit. Sinon c'est tout ou rien : une seule ligne en erreur → 400 avec le rapport " +
+      "dans `details`. SKU absent → généré (`ART-000001`…). Catégories inconnues créées si `createCategories`.",
+  },
   "GET /api/products/:id": { summary: "Détail d'un produit" },
   "POST /api/products": { summary: "Créer un produit" },
   "PATCH /api/products/:id": { summary: "Modifier un produit (le changement de prix exige prices.manage et est audité)" },

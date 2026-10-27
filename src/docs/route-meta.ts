@@ -15,7 +15,8 @@ export type RouteMeta =
   | { kind: "permission"; permissions: Permission[] }
   | { kind: "body"; schema: z.ZodType }
   | { kind: "params"; schema: z.ZodType }
-  | { kind: "idempotent"; required: boolean };
+  | { kind: "idempotent"; required: boolean }
+  | { kind: "upload"; extensions: readonly string[]; options?: z.ZodType };
 
 const metadata = new WeakMap<RequestHandler, RouteMeta>();
 

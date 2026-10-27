@@ -99,11 +99,12 @@ function operationOf(route: CollectedRoute) {
   const metas = route.metas;
   const authenticated = find(metas, "authenticated").length > 0;
   const body = find(metas, "body")[0];
+  const upload = find(metas, "upload")[0];
   const parameters = parametersOf(route, doc?.query);
   const restricted = find(metas, "permission").length + find(metas, "company").length + find(metas, "platformAdmin").length > 0;
 
   const responses: Record<string, unknown> = { "2XX": { description: "Succès" } };
-  if (body || parameters.some((parameter) => parameter.in !== "header")) responses["400"] = errorResponse("Données ou paramètres invalides");
+  if (body || upload || parameters.some((parameter) => parameter.in !== "header")) responses["400"] = errorResponse("Données ou paramètres invalides");
   if (authenticated) responses["401"] = errorResponse("Token manquant, invalide ou expiré");
   if (restricted) responses["403"] = errorResponse("Droits insuffisants");
   if (route.path.includes(":")) responses["404"] = errorResponse("Introuvable (ou appartient à une autre entreprise)");
@@ -119,7 +120,27 @@ function operationOf(route: CollectedRoute) {
     ...(authenticated && { security: [{ bearerAuth: [] }] }),
     ...(parameters.length > 0 && { parameters }),
     ...(body && { requestBody: { required: true, content: { "application/json": { schema: toJsonSchema(body.schema) } } } }),
+    ...(upload && { requestBody: uploadBody(upload) }),
     responses,
+  };
+}
+
+/** Envoi de fichier : multipart/form-data, champ "file" + champ "options" (JSON) facultatif. */
+function uploadBody(upload: Extract<RouteMeta, { kind: "upload" }>) {
+  const properties: Record<string, unknown> = {
+    file: { type: "string", format: "binary", description: `Fichier ${upload.extensions.join(" ou ")}` },
+  };
+  if (upload.options) {
+    properties.options = {
+      type: "string",
+      description: "Options en JSON (chaîne de caractères) :",
+      contentMediaType: "application/json",
+      contentSchema: toJsonSchema(upload.options),
+    };
+  }
+  return {
+    required: true,
+    content: { "multipart/form-data": { schema: { type: "object", required: ["file"], properties } } },
   };
 }
 
