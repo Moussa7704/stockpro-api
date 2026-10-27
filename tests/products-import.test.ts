@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
-import { AuditLog, Category, Product, Unit } from "../src/models/index.js";
-import { addMember, api, bearer, createCompany, login, type Session } from "./helpers/auth.js";
+import { AuditLog, Category, MembershipPermission, Product, StockAdjustment, StockMovement, Unit } from "../src/models/index.js";
+import { addMember, api, bearer, createCompany, createShop, login, type Session } from "./helpers/auth.js";
 
 async function setup(name = "Commerce A", email = "owner@test.com") {
   const created = await createCompany(name, email);
@@ -54,7 +54,7 @@ describe("Import de produits", () => {
       line: 4,
       cells: ["R1", "Riz 25 kg", "Alimentation", "pce", "15000", "13500", "12"],
     });
-    expect(analysis.suggestedMapping).toEqual(mapping);
+    expect(analysis.suggestedMapping).toEqual({ ...mapping, quantity: "Qté" });
   });
 
   it("aperçu : chaque ligne classée, rien n'est écrit", async () => {
@@ -162,7 +162,7 @@ describe("Import de produits", () => {
 
     const analysis = (await analyze(session, template.body as Buffer, "modele.xlsx").expect(200)).body.analysis;
     expect(Object.keys(analysis.suggestedMapping).sort()).toEqual(
-      ["name", "sku", "barcode", "category", "unit", "salePrice", "purchasePrice", "alertThreshold", "description"].sort(),
+      ["name", "sku", "barcode", "category", "unit", "salePrice", "purchasePrice", "alertThreshold", "description", "quantity"].sort(),
     );
   });
 
@@ -185,3 +185,91 @@ describe("Import de produits", () => {
 function latin1(text: string): Buffer {
   return Buffer.from(text, "latin1");
 }
+
+describe("Import du stock de départ", () => {
+  const withStock = { ...mapping, quantity: "Qté" };
+  const level = async (shopId: string, sku: string) => {
+    const product = await Product.findOne({ where: { sku } });
+    const [row] = (await StockMovement.sequelize!.query(
+      "SELECT quantity, average_cost FROM stock_levels WHERE shop_id = :shopId AND product_id = :productId",
+      { replacements: { shopId, productId: product!.id }, type: "SELECT" },
+    )) as { quantity: string; average_cost: string }[];
+    return row;
+  };
+
+  it("crée les produits ET une pièce « stock d'ouverture » ; réimporter ne double jamais le stock", async () => {
+    const { session, company, shop, owner } = await setup();
+    const file = await shopWorkbook([
+      ["R1", "Riz 25 kg", "Alimentation", "pce", 15000, 13500, 12],
+      ["R2", "Sucre", "Alimentation", "kg", 800, 650, "2,5"],
+      ["R3", "Bougies", "Maison", "pce", 100, null, 0],
+    ]);
+
+    const preview = (await importFile(session, file, "stock.xlsx", { mapping: withStock, shopId: shop.id, dryRun: true }).expect(200))
+      .body.report;
+    expect(preview.stock).toMatchObject({ shop: { id: shop.id }, lines: 2, alreadyStocked: 0, adjustment: null });
+    expect(preview.rows.map((row: { stock?: string }) => row.stock)).toEqual(["opening", "opening", undefined]);
+
+    const report = (await importFile(session, file, "stock.xlsx", { mapping: withStock, shopId: shop.id }).expect(201)).body.report;
+    expect(report.toCreate).toBe(3);
+    expect(report.stock.adjustment.number).toMatch(/^BTQ1-AJ-\d{4}-000001$/);
+
+    const adjustment = await StockAdjustment.findByPk(report.stock.adjustment.id);
+    expect(adjustment).toMatchObject({ reason: "opening_balance", shopId: shop.id, createdBy: owner.id, notes: "Import du fichier « stock.xlsx »" });
+    const movements = await StockMovement.findAll({ where: { companyId: company.id, sourceId: adjustment!.id } });
+    expect(movements).toHaveLength(2);
+    expect(movements.every((movement) => movement.createdBy === owner.id)).toBe(true);
+    // Coût moyen = prix d'achat de la ligne
+    expect(await level(shop.id, "R1")).toEqual({ quantity: "12.000", average_cost: "13500.0000" });
+    expect(await level(shop.id, "R2")).toEqual({ quantity: "2.500", average_cost: "650.0000" });
+
+    // Même fichier une 2e fois : produits connus, stock déjà là → rien n'est écrit
+    const again = (await importFile(session, file, "stock.xlsx", { mapping: withStock, shopId: shop.id }).expect(200)).body.report;
+    expect(again).toMatchObject({ toCreate: 0, existing: 3, stock: { lines: 0, alreadyStocked: 2, adjustment: null } });
+    expect(again.rows[0].messages).toContain("Déjà du stock dans cette boutique : quantité non importée (faites un inventaire)");
+    expect(await level(shop.id, "R1")).toMatchObject({ quantity: "12.000" });
+    expect(await StockAdjustment.count({ where: { companyId: company.id } })).toBe(1);
+  });
+
+  it("met en stock un produit déjà au catalogue mais jamais stocké dans cette boutique", async () => {
+    const { session, company, shop } = await setup();
+    const other = await createShop(company.id, "BTQ2");
+    const file = await shopWorkbook([["R1", "Riz 25 kg", "Alimentation", "pce", 15000, 13500, 12]]);
+    await importFile(session, file, "stock.xlsx", { mapping: withStock, shopId: shop.id }).expect(201);
+
+    // Même fichier pour la 2e boutique : la fiche existe, mais aucun stock ici encore
+    const report = (await importFile(session, file, "stock.xlsx", { mapping: withStock, shopId: other.id }).expect(201)).body.report;
+    expect(report).toMatchObject({ toCreate: 0, existing: 1, stock: { lines: 1, alreadyStocked: 0 } });
+    expect(await level(other.id, "R1")).toMatchObject({ quantity: "12.000" });
+  });
+
+  it("contrôle les quantités, la boutique et le droit stock.adjust", async () => {
+    const { session, company, shop } = await setup();
+    const file = await shopWorkbook([
+      ["R1", "Riz 25 kg", "Alimentation", "pce", 15000, null, "2,5"],
+      ["R2", "Sucre", "Alimentation", "kg", 800, null, "-3"],
+    ]);
+
+    const preview = (await importFile(session, file, "stock.xlsx", { mapping: withStock, shopId: shop.id, dryRun: true }).expect(200))
+      .body.report;
+    expect(preview.rows.map((row: { messages?: string[] }) => row.messages)).toEqual([
+      ["Quantité : nombre entier attendu (Pièce)"],
+      ["Quantité « -3 » invalide (nombre positif attendu)"],
+    ]);
+
+    const noShop = await importFile(session, file, "stock.xlsx", { mapping: withStock }).expect(400);
+    expect(noShop.body.error.details).toEqual([{ field: "options.shopId", message: "Choisissez la boutique qui reçoit le stock" }]);
+
+    // Boutique d'une autre entreprise : introuvable
+    const other = await createCompany("Commerce B", "owner-b@test.com");
+    await importFile(session, file, "stock.xlsx", { mapping: withStock, shopId: other.shop.id, dryRun: true }).expect(404);
+
+    // Gestionnaire du catalogue privé de stock.adjust : fiches oui, quantités non
+    const { membership } = await addMember(company.id, "keeper@test.com", "stock_keeper", { shopIds: [shop.id] });
+    await MembershipPermission.create({ membershipId: membership.id, companyId: company.id, permission: "stock.adjust", effect: "revoke" });
+    const keeper = await login("keeper@test.com");
+    const refused = await importFile(keeper, file, "stock.xlsx", { mapping: withStock, shopId: shop.id, dryRun: true }).expect(403);
+    expect(refused.body.error.message).toBe("Importer des quantités en stock nécessite la permission stock.adjust");
+    await importFile(keeper, file, "stock.xlsx", { mapping, dryRun: true }).expect(200);
+  });
+});

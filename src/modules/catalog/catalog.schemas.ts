@@ -132,31 +132,41 @@ export const IMPORT_FIELDS = [
   "purchasePrice",
   "alertThreshold",
   "description",
+  "quantity",
 ] as const;
 export type ImportField = (typeof IMPORT_FIELDS)[number];
 
 const columnName = z.string().trim().min(1).max(200);
 
-export const importProductsOptionsSchema = z.object({
-  // Champ StockPro → nom de la colonne du fichier (tel que renvoyé par l'analyse)
-  mapping: z.object({
-    name: columnName,
-    salePrice: columnName,
-    sku: columnName.optional(),
-    barcode: columnName.optional(),
-    category: columnName.optional(),
-    unit: columnName.optional(),
-    purchasePrice: columnName.optional(),
-    alertThreshold: columnName.optional(),
-    description: columnName.optional(),
-  }),
-  // Unité des lignes sans unité (ou si le fichier n'a pas de colonne « unité »)
-  defaultUnitId: z.uuid().optional(),
-  // Catégorie inconnue : créée (true) ou ligne en erreur (false)
-  createCategories: z.boolean().default(true),
-  // true : aperçu seulement, rien n'est écrit
-  dryRun: z.boolean().default(false),
-});
+export const importProductsOptionsSchema = z
+  .object({
+    // Champ StockPro → nom de la colonne du fichier (tel que renvoyé par l'analyse)
+    mapping: z.object({
+      name: columnName,
+      salePrice: columnName,
+      sku: columnName.optional(),
+      barcode: columnName.optional(),
+      category: columnName.optional(),
+      unit: columnName.optional(),
+      purchasePrice: columnName.optional(),
+      alertThreshold: columnName.optional(),
+      description: columnName.optional(),
+      // Stock de départ (permission stock.adjust) : il faut alors une boutique
+      quantity: columnName.optional(),
+    }),
+    // Boutique qui reçoit le stock de départ
+    shopId: z.uuid().optional(),
+    // Unité des lignes sans unité (ou si le fichier n'a pas de colonne « unité »)
+    defaultUnitId: z.uuid().optional(),
+    // Catégorie inconnue : créée (true) ou ligne en erreur (false)
+    createCategories: z.boolean().default(true),
+    // true : aperçu seulement, rien n'est écrit
+    dryRun: z.boolean().default(false),
+  })
+  .refine((options) => !options.mapping.quantity || options.shopId, {
+    message: "Choisissez la boutique qui reçoit le stock",
+    path: ["shopId"],
+  });
 
 export type CreateUnitInput = z.infer<typeof createUnitSchema>;
 export type UpdateUnitInput = z.infer<typeof updateUnitSchema>;

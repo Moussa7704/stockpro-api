@@ -140,7 +140,10 @@ export const operations: Record<string, OperationDoc> = {
       "Même fichier + `options` (correspondance des colonnes, unité par défaut…). Chaque ligne est classée : " +
       "`create`, `existing` (même SKU ou code-barres : non modifié), `skipped` (ligne sans nom, total…) ou `error`. " +
       "Avec `dryRun: true`, rien n'est écrit. Sinon c'est tout ou rien : une seule ligne en erreur → 400 avec le rapport " +
-      "dans `details`. SKU absent → généré (`ART-000001`…). Catégories inconnues créées si `createCategories`.",
+      "dans `details`. SKU absent → généré (`ART-000001`…). Catégories inconnues créées si `createCategories`.\n\n" +
+      "**Stock de départ** : colonne `quantity` + `shopId` (permission `stock.adjust` en plus). Une seule pièce " +
+      "« stock d'ouverture » pour tout le fichier, valorisée au prix d'achat de la ligne. Premier remplissage seulement : " +
+      "un produit qui a déjà eu du stock dans la boutique garde le sien (`stock: already_stocked`) — réimporter ne double jamais.",
   },
   "GET /api/products/:id": { summary: "Détail d'un produit" },
   "POST /api/products": { summary: "Créer un produit" },
