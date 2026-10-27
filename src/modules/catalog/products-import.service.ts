@@ -2,12 +2,22 @@ import ExcelJS from "exceljs";
 import { QueryTypes, type Transaction } from "sequelize";
 import type { z } from "zod";
 import { sequelize } from "../../config/database.js";
-import { Category, Product, Unit } from "../../models/index.js";
+import { Category, Product, StockAdjustment, Unit, type Shop } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
-import { amountSchema, currencyDecimals, isWhole, quantitySchema, significantDecimals } from "../../utils/decimal.js";
+import {
+  amountSchema,
+  currencyDecimals,
+  isWhole,
+  normalizeDecimal,
+  quantitySchema,
+  significantDecimals,
+} from "../../utils/decimal.js";
 import { readSpreadsheet, type SheetTable } from "../../utils/spreadsheet.js";
 import type { CompanyAccess } from "../access/access.service.js";
 import { recordAudit, type AuditActor } from "../audit/audit.service.js";
+import { DOCUMENT_TYPES, nextDocumentNumber } from "../stock/numbering.js";
+import { findOperableShop } from "../stock/stock-access.js";
+import { applyMovements, lockLevels } from "../stock/stock-engine.js";
 import { rethrowAsConflict } from "./catalog.helpers.js";
 import {
   barcodeSchema,
@@ -23,6 +33,11 @@ import {
  * 2. aperçu (dryRun) : chaque ligne contrôlée → à créer, déjà existante, ignorée ou en erreur ;
  * 3. import : tout ou rien, dans une seule transaction, audité.
  * Un produit déjà connu (même SKU ou même code-barres) n'est pas modifié.
+ *
+ * Avec une colonne « quantité » et une boutique, le stock de départ entre par UN ajustement
+ * « stock d'ouverture » (numéroté, mouvements au journal), valorisé au prix d'achat de la ligne.
+ * Premier remplissage seulement : un produit qui a déjà eu du stock dans cette boutique n'est pas
+ * touché (réimporter le même fichier ne double jamais le stock ; une remise à niveau = inventaire).
  */
 
 export const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
@@ -43,6 +58,7 @@ const FIELD_LABELS: Record<ImportField, string> = {
   purchasePrice: "Prix d'achat",
   alertThreshold: "Seuil d'alerte",
   description: "Description",
+  quantity: "Quantité en stock",
 };
 const REQUIRED_FIELDS: ImportField[] = ["name", "salePrice"];
 
@@ -67,6 +83,7 @@ const SYNONYMS: Record<ImportField, string[]> = {
   purchasePrice: ["prix d achat", "prix achat", "pa", "cout", "cout unitaire", "prix de revient", "pr", "cout d achat"],
   alertThreshold: ["seuil", "seuil d alerte", "stock min", "stock minimum", "alerte", "minimum", "qte min"],
   description: ["description", "details", "detail", "observation", "observations", "remarque", "commentaire"],
+  quantity: ["quantite", "qte", "qty", "stock", "en stock", "stock actuel", "stock initial", "quantite en stock", "nombre"],
 };
 for (const field of IMPORT_FIELDS) {
   SYNONYMS[field].push(normalize(FIELD_LABELS[field]));
@@ -127,11 +144,18 @@ export interface ImportRowResult {
   sku: string | null;
   /** SKU généré par StockPro (la ligne n'en avait pas) */
   generatedSku?: boolean;
+  /** Quantité lue dans le fichier (absente : pas de stock pour cette ligne) */
+  quantity?: string;
+  /** opening : entre en stock d'ouverture ; already_stocked : déjà du stock ici, quantité ignorée */
+  stock?: "opening" | "already_stocked";
   messages?: string[];
 }
 
 interface PlannedProduct {
   row: ImportRowResult;
+  /** Produit déjà enregistré (ligne « existing ») */
+  productId?: string;
+  quantity: string | null;
   barcode: string | null;
   description: string | null;
   categoryKey: string | null;
@@ -178,6 +202,94 @@ async function lastGeneratedSku(companyId: string, transaction: Transaction): Pr
   return Number(row?.last ?? 0);
 }
 
+interface KnownProduct {
+  id: string;
+  sku: string;
+  barcode: string | null;
+  status: string;
+  allows_decimal: boolean;
+  unit_name: string;
+}
+
+/** Produits (déjà enregistrés) qui ont eu au moins un mouvement de stock dans la boutique. */
+async function alreadyStocked(
+  companyId: string,
+  shopId: string,
+  items: PlannedProduct[],
+  transaction: Transaction,
+): Promise<Set<string>> {
+  const productIds = items.map((item) => item.productId).filter((id): id is string => !!id);
+  if (productIds.length === 0) {
+    return new Set();
+  }
+  const rows = await sequelize.query<{ product_id: string }>(
+    `SELECT DISTINCT product_id FROM stock_movements
+     WHERE company_id = :companyId AND shop_id = :shopId AND product_id IN (:productIds)`,
+    { replacements: { companyId, shopId, productIds }, type: QueryTypes.SELECT, transaction },
+  );
+  return new Set(rows.map((row) => row.product_id));
+}
+
+/**
+ * Stock de départ : UNE pièce « stock d'ouverture » pour tout le fichier, un mouvement par ligne,
+ * valorisé au prix d'achat de la ligne (sinon au coût moyen actuel). Même chemin qu'un ajustement
+ * manuel : moteur de stock, numérotation sans trou, audit.
+ */
+async function recordOpeningStock(
+  shop: Shop,
+  lines: PlannedProduct[],
+  filename: string,
+  access: CompanyAccess,
+  actor: AuditActor,
+  transaction: Transaction,
+): Promise<{ id: string; number: string }> {
+  const companyId = access.companyId;
+  // Soldes verrouillés puis nouveau contrôle : deux imports simultanés ne remplissent pas deux fois
+  await lockLevels(
+    companyId,
+    lines.map((line) => ({ shopId: shop.id, productId: line.productId! })),
+    transaction,
+  );
+  if ((await alreadyStocked(companyId, shop.id, lines, transaction)).size > 0) {
+    throw AppError.conflict("Du stock vient d'être enregistré pour un produit du fichier : relancez l'aperçu");
+  }
+
+  const adjustment = await StockAdjustment.create(
+    {
+      companyId,
+      shopId: shop.id,
+      number: await nextDocumentNumber(transaction, companyId, shop, DOCUMENT_TYPES.adjustment),
+      reason: "opening_balance",
+      notes: `Import du fichier « ${filename} »`,
+      createdBy: actor.actorUserId!,
+    },
+    { transaction },
+  );
+  const movements = await applyMovements(
+    { companyId, sourceType: "stock_adjustment", sourceId: adjustment.id, createdBy: actor.actorUserId, transaction },
+    lines.map((line) => ({
+      shopId: shop.id,
+      productId: line.productId!,
+      quantity: line.quantity!,
+      type: "adjustment" as const,
+      unitCost: line.purchasePriceHint ?? undefined,
+    })),
+  );
+  await recordAudit(
+    {
+      ...actor,
+      companyId,
+      shopId: shop.id,
+      action: "stock.adjust",
+      entityType: "stock_adjustment",
+      entityId: adjustment.id,
+      after: { number: adjustment.number, reason: adjustment.reason, source: "import", filename, lines: movements.length },
+    },
+    transaction,
+  );
+  return { id: adjustment.id, number: adjustment.number };
+}
+
 export async function importProducts(
   access: CompanyAccess,
   file: UploadedFile,
@@ -199,10 +311,17 @@ export async function importProducts(
     const index = columnOf[field];
     return index === undefined ? "" : (cells[index] ?? "").trim();
   };
+  // Entrer du stock est une opération de stock : même droit qu'un ajustement manuel
+  const withStock = columnOf.quantity !== undefined;
+  if (withStock && !access.permissions.has("stock.adjust")) {
+    throw AppError.forbidden("Importer des quantités en stock nécessite la permission stock.adjust");
+  }
 
   try {
     return await sequelize.transaction(async (transaction) => {
       const companyId = access.companyId;
+      // Boutique dans le périmètre de l'utilisateur (sinon 404), non archivée
+      const shop: Shop | null = withStock ? await findOperableShop(access, options.shopId!, transaction) : null;
       const units = await Unit.findAll({ where: { companyId, archivedAt: null }, transaction });
       const categories = await Category.findAll({ where: { companyId, archivedAt: null }, transaction });
 
@@ -327,6 +446,17 @@ export async function importProducts(
           messages.push("Description : 2000 caractères max");
         }
 
+        // Quantité vide ou nulle : la fiche est importée, sans stock
+        let quantity: string | null = null;
+        const rawQuantity = valueOf(cells, "quantity");
+        if (rawQuantity) {
+          const value = parseDecimal(quantitySchema, rawQuantity);
+          if (value === null) messages.push(`Quantité « ${rawQuantity} » invalide (nombre positif attendu)`);
+          else if (unit && !unit.allowsDecimal && !isWhole(value)) messages.push(`Quantité : nombre entier attendu (${unit.name})`);
+          else if (normalizeDecimal(value) !== "0") quantity = value;
+        }
+        if (quantity) row.quantity = quantity;
+
         if (messages.length > 0) {
           row.status = "error";
           row.messages = messages;
@@ -334,6 +464,7 @@ export async function importProducts(
         }
         planned.push({
           row,
+          quantity,
           barcode,
           description,
           categoryKey,
@@ -344,40 +475,69 @@ export async function importProducts(
         });
       }
 
-      // Produits déjà connus (même SKU ou même code-barres, archivés compris) : laissés tels quels
+      // Produits déjà connus (même SKU ou même code-barres, archivés compris) : fiche laissée telle quelle
       const skus = planned.map((item) => item.row.sku).filter((sku): sku is string => !!sku);
       const barcodes = planned.map((item) => item.barcode).filter((barcode): barcode is string => !!barcode);
       // [""] : IN () vide est invalide en SQL, et aucun SKU ni code-barres n'est vide
-      const existing = await sequelize.query<{ sku: string; barcode: string | null }>(
-        `SELECT sku, barcode FROM products
-         WHERE company_id = :companyId AND (sku IN (:skus) OR barcode IN (:barcodes))`,
+      const existing = await sequelize.query<KnownProduct>(
+        `SELECT p.id, p.sku, p.barcode, p.status, u.allows_decimal, u.name AS unit_name
+         FROM products p JOIN units u ON u.id = p.unit_id
+         WHERE p.company_id = :companyId AND (p.sku IN (:skus) OR p.barcode IN (:barcodes))`,
         {
           replacements: { companyId, skus: skus.length ? skus : [""], barcodes: barcodes.length ? barcodes : [""] },
           type: QueryTypes.SELECT,
           transaction,
         },
       );
-      const knownSkus = new Set(existing.map((product) => product.sku));
-      const knownBarcodes = new Set(existing.map((product) => product.barcode).filter(Boolean));
+      const bySku = new Map(existing.map((product) => [product.sku, product]));
+      const byBarcode = new Map(existing.filter((product) => product.barcode).map((product) => [product.barcode!, product]));
 
       let nextNumber = await lastGeneratedSku(companyId, transaction);
-      const toCreate = planned.filter((item) => {
-        if ((item.row.sku && knownSkus.has(item.row.sku)) || (item.barcode && knownBarcodes.has(item.barcode))) {
-          item.row.status = "existing";
-          item.row.messages = ["Produit déjà enregistré (même SKU ou code-barres) : non modifié"];
-          return false;
+      const toCreate: PlannedProduct[] = [];
+      const toStock: PlannedProduct[] = [];
+      for (const item of planned) {
+        const known = (item.row.sku && bySku.get(item.row.sku)) || (item.barcode && byBarcode.get(item.barcode)) || undefined;
+        if (!known) {
+          if (!item.row.sku) {
+            let sku: string;
+            do {
+              nextNumber++;
+              sku = `ART-${String(nextNumber).padStart(6, "0")}`;
+            } while (lineOfSku.has(sku));
+            item.row.sku = sku;
+            item.row.generatedSku = true;
+          }
+          toCreate.push(item);
+          if (item.quantity) toStock.push(item);
+          continue;
         }
-        if (!item.row.sku) {
-          let sku: string;
-          do {
-            nextNumber++;
-            sku = `ART-${String(nextNumber).padStart(6, "0")}`;
-          } while (lineOfSku.has(sku));
-          item.row.sku = sku;
-          item.row.generatedSku = true;
+
+        item.row.status = "existing";
+        item.productId = known.id;
+        item.row.messages = ["Produit déjà enregistré (même SKU ou code-barres) : fiche non modifiée"];
+        if (!item.quantity) continue;
+        // La quantité se lit dans l'unité du produit enregistré, pas dans celle du fichier
+        if (!known.allows_decimal && !isWhole(item.quantity)) {
+          item.row.status = "error";
+          item.row.messages = [`Quantité : nombre entier attendu (${known.unit_name})`];
+        } else if (known.status !== "active") {
+          item.row.messages.push("Produit archivé : quantité non importée");
+          delete item.row.quantity;
+        } else {
+          toStock.push(item);
         }
-        return true;
-      });
+      }
+
+      // Premier remplissage seulement : un produit qui a déjà eu un mouvement dans la boutique garde son stock
+      if (shop) {
+        const stocked = await alreadyStocked(companyId, shop.id, toStock, transaction);
+        for (const item of toStock.filter((planned) => planned.productId && stocked.has(planned.productId))) {
+          item.row.stock = "already_stocked";
+          item.row.messages!.push("Déjà du stock dans cette boutique : quantité non importée (faites un inventaire)");
+        }
+      }
+      const opening = toStock.filter((item) => item.row.stock !== "already_stocked" && item.row.status !== "error");
+      for (const item of opening) item.row.stock = "opening";
 
       const count = (status: ImportRowStatus) => results.filter((row) => row.status === status).length;
       const report = {
@@ -389,17 +549,26 @@ export async function importProducts(
         skipped: count("skipped"),
         errors: count("error"),
         categoriesToCreate: [...newCategories.values()],
+        stock: shop
+          ? {
+              shop: { id: shop.id, code: shop.code, name: shop.name },
+              lines: opening.length,
+              alreadyStocked: results.filter((row) => row.stock === "already_stocked").length,
+              // Pièce créée à l'import (null à l'aperçu)
+              adjustment: null as { id: string; number: string } | null,
+            }
+          : null,
         rows: results,
       };
 
       if (report.errors > 0 && !options.dryRun) {
         throw AppError.badRequest(`${report.errors} ligne(s) en erreur : rien n'a été importé`, report);
       }
-      if (options.dryRun || toCreate.length === 0) {
+      if (options.dryRun || (toCreate.length === 0 && opening.length === 0)) {
         return report;
       }
 
-      // --- Écriture : catégories manquantes, puis produits, puis une ligne d'audit récapitulative
+      // --- Écriture : catégories manquantes, produits, puis le stock d'ouverture ; audit à chaque étape
       const usedCategories = new Set(toCreate.map((item) => item.categoryKey).filter(Boolean));
       const createdCategories: string[] = [];
       for (const [key, categoryName] of newCategories) {
@@ -420,7 +589,7 @@ export async function importProducts(
         );
       }
 
-      await Product.bulkCreate(
+      const created = await Product.bulkCreate(
         toCreate.map((item) => ({
           companyId,
           sku: item.row.sku!,
@@ -435,6 +604,9 @@ export async function importProducts(
         })),
         { transaction },
       );
+      toCreate.forEach((item, index) => {
+        item.productId = created[index]!.id;
+      });
       await recordAudit(
         {
           ...actor,
@@ -451,6 +623,10 @@ export async function importProducts(
         },
         transaction,
       );
+
+      if (shop && opening.length > 0) {
+        report.stock!.adjustment = await recordOpeningStock(shop, opening, file.originalname, access, actor, transaction);
+      }
 
       return { ...report, categoriesToCreate: createdCategories };
     });
@@ -486,6 +662,7 @@ export async function importTemplate(): Promise<Buffer> {
     purchasePrice: 13500,
     alertThreshold: 5,
     description: "",
+    quantity: 20,
   });
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }

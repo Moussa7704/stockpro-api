@@ -138,7 +138,8 @@ productsRoutes.post(
   idempotent(),
   async (req: Request, res: Response) => {
     const report = await importService.importProducts(req.company!, req.file!, req.body, auditActor(req));
-    res.status(report.dryRun || report.toCreate === 0 ? 200 : 201).json({ report });
+    const written = !report.dryRun && (report.toCreate > 0 || !!report.stock?.adjustment);
+    res.status(written ? 201 : 200).json({ report });
   },
 );
 
