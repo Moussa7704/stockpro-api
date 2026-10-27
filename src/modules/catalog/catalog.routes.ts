@@ -1,10 +1,14 @@
 import { Router, type Request, type Response } from "express";
 import { authenticate, requireCompany, requirePermission } from "../../middlewares/auth.middleware.js";
+import { idempotent } from "../../middlewares/idempotency.middleware.js";
+import { uploadFile } from "../../middlewares/upload.middleware.js";
 import { validateBody, validateParams } from "../../middlewares/validate.middleware.js";
 import { includeArchivedQuerySchema, parseQuery, uuidParamsSchema } from "../../utils/query.js";
+import { SPREADSHEET_EXTENSIONS } from "../../utils/spreadsheet.js";
 import { auditActor } from "../audit/audit.service.js";
 import * as schemas from "./catalog.schemas.js";
 import * as categoriesService from "./categories.service.js";
+import * as importService from "./products-import.service.js";
 import * as productsService from "./products.service.js";
 import * as suppliersService from "./suppliers.service.js";
 import * as unitsService from "./units.service.js";
@@ -107,6 +111,37 @@ productsRoutes.get("/lookup", async (req: Request, res: Response) => {
   const query = parseQuery(schemas.lookupProductQuerySchema, req.query);
   res.json({ product: await productsService.lookupProduct(req.company!.companyId, query) });
 });
+
+// Import depuis le fichier du commerçant (avant "/:id" aussi)
+const spreadsheet = { extensions: SPREADSHEET_EXTENSIONS, maxBytes: importService.IMPORT_MAX_BYTES };
+
+productsRoutes.get("/import/template", canManageProducts, async (_req: Request, res: Response) => {
+  res
+    .set({
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": 'attachment; filename="modele-import-produits.xlsx"',
+    })
+    .send(await importService.importTemplate());
+});
+productsRoutes.post(
+  "/import/analyze",
+  canManageProducts,
+  uploadFile(spreadsheet),
+  async (req: Request, res: Response) => {
+    res.json({ analysis: await importService.analyzeFile(req.file!) });
+  },
+);
+productsRoutes.post(
+  "/import",
+  canManageProducts,
+  uploadFile({ ...spreadsheet, options: schemas.importProductsOptionsSchema }),
+  idempotent(),
+  async (req: Request, res: Response) => {
+    const report = await importService.importProducts(req.company!, req.file!, req.body, auditActor(req));
+    res.status(report.dryRun || report.toCreate === 0 ? 200 : 201).json({ report });
+  },
+);
+
 productsRoutes.get("/:id", byId, async (req: IdRequest, res: Response) => {
   res.json({ product: await productsService.findProduct(req.company!.companyId, req.params.id) });
 });

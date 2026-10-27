@@ -13,13 +13,19 @@ import { AppError } from "../utils/app-error.js";
  * - même clé, même contenu : la réponse mémorisée est renvoyée, rien n'est refait ;
  * - même clé, contenu différent : 422 (clé réutilisée par erreur) ;
  * - même clé pendant que la première est encore en cours : 409.
- * À placer APRÈS requirePermission (la clé est rangée par entreprise).
+ * À placer APRÈS requirePermission (la clé est rangée par entreprise), et après uploadFile
+ * pour un envoi de fichier (le contenu du fichier entre dans l'empreinte de la requête).
  */
 
 const KEY_PATTERN = /^[A-Za-z0-9_:.-]{8,100}$/;
 
-function hashRequest(method: string, path: string, body: unknown): string {
-  return createHash("sha256").update(`${method} ${path} ${JSON.stringify(body ?? null)}`).digest("hex");
+function hashRequest(method: string, path: string, body: unknown, file?: Express.Multer.File): string {
+  const hash = createHash("sha256").update(`${method} ${path} ${JSON.stringify(body ?? null)}`);
+  // Envoi de fichier : même clé avec un autre fichier = autre requête (422), pas une répétition
+  if (file) {
+    hash.update(file.buffer);
+  }
+  return hash.digest("hex");
 }
 
 export function idempotent({ required = false } = {}): RequestHandler {
@@ -37,7 +43,7 @@ export function idempotent({ required = false } = {}): RequestHandler {
 
     const companyId = req.company!.companyId;
     const userId = req.user!.sub;
-    const requestHash = hashRequest(req.method, req.originalUrl, req.body);
+    const requestHash = hashRequest(req.method, req.originalUrl, req.body, req.file);
 
     try {
       await IdempotencyKey.create({ companyId, key, userId, requestHash, status: "processing" });

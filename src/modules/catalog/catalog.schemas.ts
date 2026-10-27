@@ -69,12 +69,12 @@ export const listSuppliersQuerySchema = paginationSchema.extend({
 
 // --- Produits
 // SKU et code-barres : sans espaces, SKU en majuscules (comparaison sans ambiguïté)
-const skuSchema = z
+export const skuSchema = z
   .string()
   .trim()
   .toUpperCase()
   .regex(/^[A-Z0-9][A-Z0-9._-]{0,63}$/, "SKU : lettres, chiffres, . _ - (64 max)");
-const barcodeSchema = z
+export const barcodeSchema = z
   .string()
   .trim()
   .regex(/^[0-9A-Za-z-]{4,64}$/, "Code-barres invalide");
@@ -120,6 +120,44 @@ export const lookupProductQuerySchema = z
   .object({ barcode: z.string().trim().min(1).optional(), sku: z.string().trim().min(1).optional() })
   .refine((value) => !!value.barcode !== !!value.sku, "Indiquez barcode OU sku");
 
+// --- Import de produits depuis le fichier du commerçant (.xlsx / .csv)
+// Champs de StockPro qu'une colonne du fichier peut alimenter
+export const IMPORT_FIELDS = [
+  "name",
+  "sku",
+  "barcode",
+  "category",
+  "unit",
+  "salePrice",
+  "purchasePrice",
+  "alertThreshold",
+  "description",
+] as const;
+export type ImportField = (typeof IMPORT_FIELDS)[number];
+
+const columnName = z.string().trim().min(1).max(200);
+
+export const importProductsOptionsSchema = z.object({
+  // Champ StockPro → nom de la colonne du fichier (tel que renvoyé par l'analyse)
+  mapping: z.object({
+    name: columnName,
+    salePrice: columnName,
+    sku: columnName.optional(),
+    barcode: columnName.optional(),
+    category: columnName.optional(),
+    unit: columnName.optional(),
+    purchasePrice: columnName.optional(),
+    alertThreshold: columnName.optional(),
+    description: columnName.optional(),
+  }),
+  // Unité des lignes sans unité (ou si le fichier n'a pas de colonne « unité »)
+  defaultUnitId: z.uuid().optional(),
+  // Catégorie inconnue : créée (true) ou ligne en erreur (false)
+  createCategories: z.boolean().default(true),
+  // true : aperçu seulement, rien n'est écrit
+  dryRun: z.boolean().default(false),
+});
+
 export type CreateUnitInput = z.infer<typeof createUnitSchema>;
 export type UpdateUnitInput = z.infer<typeof updateUnitSchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
@@ -130,3 +168,4 @@ export type ListSuppliersQuery = z.infer<typeof listSuppliersQuerySchema>;
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
+export type ImportProductsOptions = z.infer<typeof importProductsOptionsSchema>;
