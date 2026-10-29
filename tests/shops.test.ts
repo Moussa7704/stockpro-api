@@ -51,6 +51,26 @@ describe("Boutiques", () => {
       .expect(403);
   });
 
+  it("un gérant modifie ses boutiques, jamais celles hors de son périmètre", async () => {
+    const { company, shop } = await createCompany("Commerce A", "owner@test.com");
+    const other = await createShop(company.id, "BTQ2");
+    await addMember(company.id, "manager@test.com", "manager", { shopIds: [shop.id] });
+    const manager = await login("manager@test.com");
+
+    await api()
+      .patch(`/api/shops/${shop.id}`)
+      .set("Authorization", bearer(manager))
+      .send({ address: "Rue 7" })
+      .expect(200);
+    await api()
+      .patch(`/api/shops/${other.id}`)
+      .set("Authorization", bearer(manager))
+      .send({ archived: true })
+      .expect(404);
+    const listed = await api().get("/api/shops?includeArchived=true").set("Authorization", bearer(manager)).expect(200);
+    expect(listed.body.shops.map((item: { id: string }) => item.id)).toEqual([shop.id]);
+  });
+
   it("archive une boutique au lieu de la supprimer, puis la restaure", async () => {
     const { company } = await createCompany("Commerce A", "owner@test.com");
     const shop = await createShop(company.id, "BTQ2");
