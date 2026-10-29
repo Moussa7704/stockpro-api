@@ -1,6 +1,6 @@
 import { Op, UniqueConstraintError } from "sequelize";
 import { sequelize } from "../../config/database.js";
-import { Shop } from "../../models/index.js";
+import { MembershipShop, Shop } from "../../models/index.js";
 import { AppError } from "../../utils/app-error.js";
 import { canAccessShop, type CompanyAccess } from "../access/access.service.js";
 import { pick, recordAudit, type AuditActor } from "../audit/audit.service.js";
@@ -45,6 +45,14 @@ export async function createShop(access: CompanyAccess, input: CreateShopInput, 
     return await sequelize.transaction(async (transaction) => {
       // companyId vient des droits (token vérifié), jamais du corps de la requête
       const shop = await Shop.create({ ...input, companyId: access.companyId }, { transaction });
+      // Un membre limité à certaines boutiques gère celle qu'il crée (sinon elle lui serait invisible)
+      const addedToCreatorShops = !access.allShops;
+      if (addedToCreatorShops) {
+        await MembershipShop.create(
+          { membershipId: access.membershipId, shopId: shop.id, companyId: access.companyId },
+          { transaction },
+        );
+      }
       await recordAudit(
         {
           ...actor,
@@ -53,7 +61,7 @@ export async function createShop(access: CompanyAccess, input: CreateShopInput, 
           action: "shop.create",
           entityType: "shop",
           entityId: shop.id,
-          after: pick(shop, AUDIT_FIELDS),
+          after: { ...pick(shop, AUDIT_FIELDS), ...(addedToCreatorShops && { addedToCreatorShops }) },
         },
         transaction,
       );

@@ -71,6 +71,33 @@ describe("Boutiques", () => {
     expect(listed.body.shops.map((item: { id: string }) => item.id)).toEqual([shop.id]);
   });
 
+  it("un gérant limité à ses boutiques voit et gère celle qu'il crée ; le propriétaire aussi", async () => {
+    const { company, shop } = await createCompany("Commerce A", "owner@test.com");
+    await addMember(company.id, "manager@test.com", "manager", { shopIds: [shop.id] });
+    await addMember(company.id, "cashier@test.com", "cashier", { shopIds: [shop.id] });
+    const manager = await login("manager@test.com");
+
+    const created = await api()
+      .post("/api/shops")
+      .set("Authorization", bearer(manager))
+      .send({ name: "Annexe", code: "ANX" })
+      .expect(201);
+    const newId = created.body.shop.id as string;
+
+    const ids = async (email: string) =>
+      ((await api().get("/api/shops").set("Authorization", bearer(await login(email))).expect(200)).body.shops as { id: string }[])
+        .map((item) => item.id)
+        .sort();
+    expect(await ids("manager@test.com")).toEqual([shop.id, newId].sort());
+    expect(await ids("owner@test.com")).toEqual([shop.id, newId].sort());
+    // Les autres membres limités n'en héritent pas
+    expect(await ids("cashier@test.com")).toEqual([shop.id]);
+
+    await api().patch(`/api/shops/${newId}`).set("Authorization", bearer(manager)).send({ address: "Rue 3" }).expect(200);
+    const audit = await AuditLog.findOne({ where: { action: "shop.create", entityId: newId } });
+    expect(audit?.after).toMatchObject({ code: "ANX", addedToCreatorShops: true });
+  });
+
   it("archive une boutique au lieu de la supprimer, puis la restaure", async () => {
     const { company } = await createCompany("Commerce A", "owner@test.com");
     const shop = await createShop(company.id, "BTQ2");
