@@ -91,7 +91,10 @@ export const operations: Record<string, OperationDoc> = {
   },
   "GET /api/shops": { summary: "Boutiques visibles par l'utilisateur", query: listShopsQuerySchema },
   "GET /api/shops/:id": { summary: "Détail d'une boutique" },
-  "POST /api/shops": { summary: "Créer une boutique" },
+  "POST /api/shops": {
+    summary: "Créer une boutique",
+    description: "Un membre limité à certaines boutiques reçoit aussitôt l'accès à celle qu'il crée.",
+  },
   "PATCH /api/shops/:id": { summary: "Modifier ou archiver une boutique" },
   "GET /api/members": {
     summary: "Membres de l'entreprise : rôle, boutiques, droits effectifs",
