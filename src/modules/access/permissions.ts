@@ -110,6 +110,8 @@ export const SYSTEM_ROLES: Record<SystemRoleCode, SystemRoleDefinition> = {
     name: "Gérant",
     allShopsByDefault: false,
     permissions: [
+      // Paramètres de l'entreprise ; boutiques modifiables seulement dans son périmètre
+      "company.manage",
       // Délégation : ajuster les droits de son équipe, jamais au-delà des siens (voir delegation.ts)
       "users.manage",
       "products.view",

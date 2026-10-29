@@ -63,4 +63,22 @@ describe("Couleur de l'interface", () => {
     expect((await me(cashier)).activeCompany.brandColor).toBe("#b91c1c");
     expect((await me(await login("owner-b@test.com"))).activeCompany.brandColor).toBeNull();
   });
+
+  it("le gérant paramètre l'entreprise par défaut ; le propriétaire peut le lui retirer", async () => {
+    const { company } = await createCompany("Commerce A", "owner@test.com");
+    const { membership } = await addMember(company.id, "manager@test.com", "manager");
+    const owner = await login("owner@test.com");
+    const manager = await login("manager@test.com");
+
+    await patch(manager, { name: "Commerce A & Fils", settings: { maxCashierDiscountPercent: 5 } }).expect(200);
+    const audit = await AuditLog.findOne({ where: { companyId: company.id, action: "company.settings_update" } });
+    expect(audit?.after).toMatchObject({ name: "Commerce A & Fils", settings: { maxCashierDiscountPercent: 5 } });
+
+    await api()
+      .put(`/api/members/${membership.id}/permissions`)
+      .set("Authorization", bearer(owner))
+      .send({ revokes: ["company.manage"] })
+      .expect(200);
+    await patch(manager, { settings: { brandColor: "#0f766e" } }).expect(403);
+  });
 });
